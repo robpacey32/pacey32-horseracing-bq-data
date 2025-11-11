@@ -1,0 +1,43 @@
+name: Horse Racing - Historic RaceSpine → BigQuery
+
+on:
+  workflow_dispatch:   # ✅ Only runs when manually triggered
+
+jobs:
+  historic_race_spine_to_bq:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------------------------------------------
+      # 1️⃣ Checkout your repo
+      # -------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------------
+      # 2️⃣ Set up Python
+      # -------------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # -------------------------------------------------------------
+      # 3️⃣ Install dependencies
+      # -------------------------------------------------------------
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # -------------------------------------------------------------
+      # 4️⃣ Authenticate with Google Cloud
+      # -------------------------------------------------------------
+      - name: Authenticate with GCP
+        run: |
+          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > gcp_key.json
+          export GOOGLE_APPLICATION_CREDENTIALS="gcp_key.json"
+
+      # -------------------------------------------------------------
+      # 5️⃣ Run the Historic Race Spine script
+      # -------------------------------------------------------------
+      - name: Run Historic RaceSpine Script
+        run: python "1. History/1. SportingLife_RaceSpineCreation.py"
