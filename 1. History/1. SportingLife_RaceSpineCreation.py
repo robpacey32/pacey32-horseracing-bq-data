@@ -130,7 +130,7 @@ def get_races_for_date_range(start_date_str, end_date_str, debug=False):
 # ☁️ FUNCTION: Write to BigQuery
 # ===============================================================
 
-def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="racespinedata", table="RaceSpine", key_path="key.json"):
+def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="horseracescrape", table="RaceSpine", key_path="key.json"):
     """Append the DataFrame to BigQuery using an explicit service account key file."""
     if df.empty:
         print("⚠️ No races found — skipping BigQuery upload.")
