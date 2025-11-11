@@ -1,0 +1,10 @@
+# Web scraping
+requests
+beautifulsoup4
+
+# Data handling
+pandas
+
+# Google Cloud BigQuery
+google-cloud-bigquery
+pandas-gbq
