@@ -14,6 +14,7 @@ import pandas as pd
 import re
 from datetime import datetime, timedelta
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 # ===============================================================
 # 🧩 FUNCTION: get_race_urls
@@ -128,15 +129,22 @@ def get_races_for_date_range(start_date_str, end_date_str, debug=False):
 # ===============================================================
 # ☁️ FUNCTION: Write to BigQuery
 # ===============================================================
-def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="racespinedata", table="RaceSpine"):
+
+def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="racespinedata", table="RaceSpine", key_path="key.json"):
+    """Append the DataFrame to BigQuery using an explicit service account key file."""
     if df.empty:
         print("⚠️ No races found — skipping BigQuery upload.")
         return
 
+    # --- Add a load timestamp ---
     df["load_timestamp"] = datetime.utcnow()
     table_id = f"{project_id}.{dataset}.{table}"
 
-    client = bigquery.Client(project=project_id)
+    # --- Authenticate using explicit key file ---
+    credentials = service_account.Credentials.from_service_account_file(key_path)
+    client = bigquery.Client(credentials=credentials, project=project_id)
+
+    # --- Load to BigQuery ---
     job_config = bigquery.LoadJobConfig(
         write_disposition="WRITE_APPEND",
         autodetect=True,
