@@ -31,13 +31,10 @@ jobs:
       # -------------------------------------------------------------
       # 4️⃣ Authenticate with Google Cloud
       # -------------------------------------------------------------
-      - name: Authenticate with GCP
-        id: auth
-        run: |
-          echo "${{ secrets.GCP_CREDENTIALS_JSON }}" > $HOME/gcp_key.json
-          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/gcp_key.json"
-          echo "✅ Credentials written to $GOOGLE_APPLICATION_CREDENTIALS"
-          cat $HOME/gcp_key.json | jq '.project_id'
+      - name: Create BigQuery credentials file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
       # -------------------------------------------------------------
       # 5️⃣ Run the Historic Race Spine script
