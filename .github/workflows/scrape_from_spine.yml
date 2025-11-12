@@ -1,16 +1,14 @@
-name: 🏇 Scrape From Spine
+name: 🏇 Scrape From Spine (Manual Test)
 
 on:
-  workflow_dispatch:  # manual trigger
-  schedule:
-    - cron: "0 8 * * *"  # 08:00 UTC → prerace
-    - cron: "0 21 * * *"  # 21:00 UTC → postrace
+  workflow_dispatch:  # Allow manual trigger from GitHub Actions tab
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -26,14 +24,11 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
-      - name: Run Prerace Scraper
-        if: github.event.schedule == '0 8 * * *'
-        env:
-          SCRAPE_MODE: prerace
-        run: python "2. Daily/2. ScrapeFromSpine.py"
+      # 🧩 Choose which mode you want to test:
+      # prerace → morning scrape
+      # results → evening scrape
 
-      - name: Run Postrace Scraper
-        if: github.event.schedule == '0 21 * * *'
+      - name: Run Pre-Race Scraper
         env:
-          SCRAPE_MODE: results
+          SCRAPE_MODE: prerace  # change to 'results' to test postrace mode
         run: python "2. Daily/2. ScrapeFromSpine.py"
