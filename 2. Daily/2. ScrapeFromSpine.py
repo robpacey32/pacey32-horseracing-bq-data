@@ -32,7 +32,7 @@ PROJECT_ID = "horseracing-pacey32-github"
 DATASET_ID = "horseracescrape"
 VIEW_NAME = "RaceSpine_Latest"
 KEY_PATH = "key.json"
-MAX_RACES = int(os.getenv("MAX_RACES", "100"))
+MAX_RACES = int(os.getenv("MAX_RACES", "5"))
 
 # ===============================================================
 # 🔗 LOAD RACES FROM BIGQUERY
@@ -302,11 +302,10 @@ def scrape_results(driver, result_url, max_retries=3):
 
                     # Prize money
                     try:
-                        prize_elem = horse_elem.find_element(
+                        prize_money = horse_elem.find_element(
                             By.CSS_SELECTOR,
-                            "span[class*='PrizeNumber']"
-                        )
-                        prize_money = prize_elem.text.strip()
+                            "div[data-test-id='prize-money']"
+                        ).text.strip()
                     except:
                         prize_money = "0"
 
