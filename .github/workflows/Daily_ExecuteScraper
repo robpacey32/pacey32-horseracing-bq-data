@@ -1,0 +1,31 @@
+name: Daily - Scrape Races From Spine (Prerace + Postrace)
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC (morning prerace scrape)
+    - cron: "0 23 * * *"  # 23:00 UTC (evening postrace scrape)
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create BigQuery credentials file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+      - name: Run ScrapeFromSpine.py
+        run: python "2. Daily/2. ScrapeFromSpine.py"
