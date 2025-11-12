@@ -190,7 +190,6 @@ def scrape_prerace(driver, prerace_url, max_retries=3):
 # 🏁 FULL POST-RACE SCRAPER (MATCHES LOCAL VERSION)
 # ===============================================================
 def scrape_results(driver, result_url, max_retries=3):
-    """Scrape full post-race results from Sporting Life."""
     data = []
 
     def safe_text(elem, css=None, attr=None, default="N/A"):
@@ -206,9 +205,9 @@ def scrape_results(driver, result_url, max_retries=3):
             driver.get(result_url)
             time.sleep(2)
 
-            # ----------------------------------------------------------
-            # 🏁 RACE-LEVEL DATA
-            # ----------------------------------------------------------
+            # ---------------------------
+            # RACE INFO
+            # ---------------------------
             try:
                 race_name = safe_text(driver, "h1[data-test-id='racecard-race-name']")
                 race_date_text = safe_text(driver, "p[class*='CourseListingHeader__StyledMainSubTitle']")
@@ -228,49 +227,51 @@ def scrape_results(driver, result_url, max_retries=3):
                 # Defaults
                 winning_time = race_distance = race_going = race_runners = race_surface = "N/A"
 
-                # Additional info list
                 for li in driver.find_elements(
                     By.CSS_SELECTOR,
                     "li.RacingRacecardSummary__StyledAdditionalInfo-sc-ff7de2c2-3"
                 ):
-                    text = li.text.strip()
+                    t = li.text.strip()
+                    if m := re.search(r"Winning time:\s*([0-9m\s\.]+)", t):
+                        winning_time = m.group(1).strip()
+                    if m := re.search(r"(\d+)\s*Runners?", t):
+                        race_runners = m.group(1)
+                    if m := re.search(r"(\d+\s*(?:m|f|y))", t):
+                        race_distance = m.group(1)
+                    if m := re.search(r"(Heavy|Soft|Good|Firm|Standard|Slow)", t):
+                        race_going = m.group(1)
+                    if m := re.search(r"(Turf|Polytrack|Tapeta|AW|Dirt)", t, re.I):
+                        race_surface = m.group(1)
 
-                    # Winning time
-                    match = re.search(r"Winning time:\s*([0-9m\s\.]+)", text)
-                    if match:
-                        winning_time = match.group(1).strip()
-
-                    # Distance
-                    match = re.search(r"(\d+\s*(?:m|f|y)(?:\s*\d*\s*(?:f|y))?)", text)
-                    if match:
-                        race_distance = match.group(1)
-
-                    # Going
-                    match = re.search(
-                        r"(Heavy|Soft|Good to Soft|Good to Firm|Good|Firm|Standard|Standard / Slow|Yielding|Fast|Slow)",
-                        text,
-                    )
-                    if match:
-                        race_going = match.group(1)
-
-                    # Runners
-                    match = re.search(r"(\d+)\s*Runners?", text)
-                    if match:
-                        race_runners = match.group(1)
-
-                    # Surface
-                    match = re.search(r"(Turf|All Weather|AW|Allweather|Polytrack|Fibresand|Tapeta|Dirt)", text, re.I)
-                    if match:
-                        race_surface = match.group(1)
-
-            except Exception as e:
-                print("Error extracting race info:", e)
+            except:
                 race_name = race_date = race_day_of_week = race_location = race_time = \
                 race_distance = race_going = race_runners = race_surface = winning_time = "N/A"
 
-            # ----------------------------------------------------------
-            # 🐎 HORSE-LEVEL DATA
-            # ----------------------------------------------------------
+            # ----------------------------------------
+            # PRIZE MONEY PANEL (extract once per race)
+            # ----------------------------------------
+            prize_dict = {}
+            try:
+                prize_rows = driver.find_elements(
+                    By.CSS_SELECTOR,
+                    "#prizemoney span.PrizeMoney__Prize-sc-1dca786a-0"
+                )
+                for row in prize_rows:
+                    label = row.find_element(
+                        By.CSS_SELECTOR,
+                        "span.PrizeMoney__PrizeLabel-sc-1dca786a-1"
+                    ).text.strip().replace(":", "")
+                    amount = row.find_element(
+                        By.CSS_SELECTOR,
+                        "span.PrizeMoney__PrizeNumber-sc-1dca786a-2"
+                    ).text.strip()
+                    prize_dict[label] = amount
+            except:
+                prize_dict = {}
+
+            # ---------------------------
+            # HORSE-LEVEL DATA
+            # ---------------------------
             horse_elements = driver.find_elements(
                 By.CSS_SELECTOR,
                 "div[class*='ResultRunner__StyledResultRunnerWrapper']"
@@ -283,7 +284,6 @@ def scrape_results(driver, result_url, max_retries=3):
                     horse_number = safe_text(horse_elem, "div[data-test-id='saddle-cloth-no']")
                     stall_number = safe_text(horse_elem, "div[data-test-id='stall-no']")
                     horse_name = safe_text(horse_elem, "div[class*='StyledHorseName'] a")
-
                     ride_desc = safe_text(horse_elem, "div[data-test-id='ride-description']", default="N/A")
 
                     # Trainer & jockey
@@ -298,16 +298,12 @@ def scrape_results(driver, result_url, max_retries=3):
                         except:
                             continue
 
-                    sp = safe_text(horse_elem, "span[class*='BetLink__BetLinkStyle']")
+                    sp = safe_text(horse_elem, "span[class*='BetLink']")
 
-                    # Prize money
-                    try:
-                        prize_money = horse_elem.find_element(
-                            By.CSS_SELECTOR,
-                            "div[data-test-id='prize-money']"
-                        ).text.strip()
-                    except:
-                        prize_money = "0"
+                    # --------------------------------------------
+                    # FIXED: Assign prize money from prize_dict
+                    # --------------------------------------------
+                    prize_money = prize_dict.get(pos, "0")
 
                     data.append({
                         "Pos": pos,
@@ -337,10 +333,9 @@ def scrape_results(driver, result_url, max_retries=3):
                 except Exception as e:
                     print("Horse parse error:", e)
 
-            break  # success → exit retry loop
+            break
 
         except TimeoutException:
-            print(f"[Retry {attempt+1}/{max_retries}] Timeout scraping results")
             time.sleep(3)
 
     return pd.DataFrame(data)
