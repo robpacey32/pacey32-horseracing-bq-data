@@ -47,8 +47,7 @@ def load_pending_races():
     query = f"""
         SELECT Date, Location, Time, prerace_URL, postrace_URL, Status
         FROM `{PROJECT_ID}.{DATASET_ID}.{VIEW_NAME}`
-        WHERE Date = '{today_str}'
-          AND Status = 'Pending'
+        WHERE Status = 'Pending'
           AND prerace_URL IS NOT NULL
         ORDER BY Location, Time
         LIMIT 10
