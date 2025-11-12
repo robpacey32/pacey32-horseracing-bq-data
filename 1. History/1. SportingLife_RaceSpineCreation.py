@@ -208,7 +208,7 @@ def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="hors
 # ===============================================================
 if __name__ == "__main__":
     start_date_str = "2025-01-01"
-    end_date_str = "2025-11-10"
+    end_date_str = "2025-11-12"
 
     all_races_df = get_races_for_date_range(start_date_str, end_date_str, debug=True)
     write_spine_to_bq(all_races_df)
