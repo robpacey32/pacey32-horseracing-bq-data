@@ -1,0 +1,30 @@
+name: Daily - Create Race Spine (Prerace URLs - 2am)
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # 02:00 UTC
+  workflow_dispatch:       # allow manual run
+
+jobs:
+  spine-races:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create BigQuery credentials file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+      - name: Run RaceSpineCreation_Races.py
+        run: python "1. Daily Spine Creation/1b. RaceSpineCreation_Races.py"
