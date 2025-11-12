@@ -1,0 +1,39 @@
+name: 🏇 Scrape From Spine
+
+on:
+  workflow_dispatch:  # manual trigger
+  schedule:
+    - cron: "0 8 * * *"  # 08:00 UTC → prerace
+    - cron: "0 21 * * *"  # 21:00 UTC → postrace
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create BigQuery credentials file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+      - name: Run Prerace Scraper
+        if: github.event.schedule == '0 8 * * *'
+        env:
+          SCRAPE_MODE: prerace
+        run: python "2. Daily/2. ScrapeFromSpine.py"
+
+      - name: Run Postrace Scraper
+        if: github.event.schedule == '0 21 * * *'
+        env:
+          SCRAPE_MODE: results
+        run: python "2. Daily/2. ScrapeFromSpine.py"
