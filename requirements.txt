@@ -1,6 +1,8 @@
 # Web scraping
 requests
 beautifulsoup4
+selenium==4.25.0
+webdriver-manager
 
 # Data handling
 pandas
@@ -8,3 +10,4 @@ pandas
 # Google Cloud BigQuery
 google-cloud-bigquery
 pandas-gbq
+google-auth
