@@ -2,10 +2,10 @@
 # 🏇 SPORTING LIFE SCRAPER — FROM RACE SPINE
 # ---------------------------------------------------------------
 # Purpose:
-#   Pull the latest pending races from BigQuery RaceSpine_Latest
-#   and run Selenium scraper (pre/post race).
-#
-#   Saves scraped data directly to BigQuery.
+#   Pull latest pending races from BigQuery RaceSpine_Latest,
+#   scrape both pre- and post-race data if URLs exist,
+#   upload results to BigQuery tables,
+#   and append new statuses (with load_timestamp) to RaceSpine.
 #
 # Author: Rob Pacey
 # Last Updated: 2025-11-12
@@ -32,14 +32,13 @@ PROJECT_ID = "horseracing-pacey32-github"
 DATASET_ID = "horseracescrape"
 VIEW_NAME = "RaceSpine_Latest"
 KEY_PATH = "key.json"
-
-SCRAPE_MODE = os.getenv("SCRAPE_MODE", "prerace")  # prerace or results
 MAX_RACES = int(os.getenv("MAX_RACES", "100"))
 
 # ===============================================================
 # 🔗 LOAD RACES FROM BIGQUERY
 # ===============================================================
 def load_pending_races():
+    """Pull latest pending races from RaceSpine_Latest view."""
     credentials = service_account.Credentials.from_service_account_file(KEY_PATH)
     client = bigquery.Client(credentials=credentials, project=PROJECT_ID)
 
@@ -48,9 +47,8 @@ def load_pending_races():
         SELECT Date, Location, Time, prerace_URL, postrace_URL, Status
         FROM `{PROJECT_ID}.{DATASET_ID}.{VIEW_NAME}`
         WHERE Status = 'Pending'
-          AND prerace_URL IS NOT NULL
         ORDER BY Location, Time
-        LIMIT 10
+        LIMIT {MAX_RACES}
     """
     df = client.query(query).to_dataframe()
 
@@ -65,13 +63,13 @@ def load_pending_races():
 # 🧩 SETUP SELENIUM
 # ===============================================================
 def setup_driver():
+    """Configure and start headless Chrome driver."""
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
@@ -79,6 +77,7 @@ def setup_driver():
 # 🐎 SCRAPE PRE-RACE
 # ===============================================================
 def scrape_prerace(driver, url):
+    """Scrape pre-race info (horse names + odds)."""
     data = []
     driver.get(url)
     time.sleep(2)
@@ -109,6 +108,7 @@ def scrape_prerace(driver, url):
 # 🏁 SCRAPE POST-RACE
 # ===============================================================
 def scrape_results(driver, url):
+    """Scrape post-race results (positions, horses, SP)."""
     data = []
     driver.get(url)
     time.sleep(2)
@@ -140,23 +140,41 @@ def scrape_results(driver, url):
 # ===============================================================
 # ☁️ UPLOAD TO BIGQUERY
 # ===============================================================
-def upload_to_bigquery(df, mode):
+def upload_to_bigquery(df, table_suffix):
     """Upload scraped results to BigQuery table."""
     if df.empty:
-        print("⚠️ No data to upload — skipping.")
+        print(f"⚠️ No {table_suffix} data to upload — skipping.")
+        return
+
+    credentials = service_account.Credentials.from_service_account_file(KEY_PATH)
+    client = bigquery.Client(credentials=credentials, project=PROJECT_ID)
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.Scrape_{table_suffix}"
+    job_config = bigquery.LoadJobConfig(write_disposition="WRITE_APPEND", autodetect=True)
+
+    job = client.load_table_from_dataframe(df, table_id, job_config=job_config)
+    job.result()
+    print(f"✅ Uploaded {len(df)} rows to {table_id}")
+
+# ===============================================================
+# 🧩 APPEND STATUS UPDATES TO RACESPLINE
+# ===============================================================
+def append_status_updates(status_rows):
+    """Append new status rows to RaceSpine with updated load_timestamp."""
+    if not status_rows:
+        print("⚠️ No status updates to append.")
         return
 
     credentials = service_account.Credentials.from_service_account_file(KEY_PATH)
     client = bigquery.Client(credentials=credentials, project=PROJECT_ID)
 
-    table_name = "Scrape_PreRace" if mode == "prerace" else "Scrape_PostRace"
-    table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+    df_status = pd.DataFrame(status_rows)
+    df_status["load_timestamp"] = datetime.utcnow()
 
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.RaceSpine"
     job_config = bigquery.LoadJobConfig(write_disposition="WRITE_APPEND", autodetect=True)
-    job = client.load_table_from_dataframe(df, table_id, job_config=job_config)
-    job.result()
 
-    print(f"✅ Uploaded {len(df)} rows to {table_id}")
+    client.load_table_from_dataframe(df_status, table_id, job_config=job_config).result()
+    print(f"✅ Appended {len(df_status)} new status rows to {table_id}")
 
 # ===============================================================
 # 🚀 MAIN EXECUTION
@@ -167,28 +185,69 @@ def main():
         return
 
     driver = setup_driver()
-    all_data = []
+    prerace_data = []
+    postrace_data = []
+    updated_rows = []
 
-    for i, row in df_races.head(MAX_RACES).iterrows():
-        url = row["postrace_URL"] if SCRAPE_MODE == "results" else row["prerace_URL"]
-        if not url or pd.isna(url):
-            continue
+    for i, row in df_races.iterrows():
+        prerace_url = row["prerace_URL"]
+        postrace_url = row["postrace_URL"]
+        location = row["Location"]
+        time_ = row["Time"]
+        date_ = row["Date"]
+        status = "Pending"
 
-        print(f"[{i+1}/{len(df_races)}] Scraping {row['Location']} {row['Time']} ({SCRAPE_MODE})...")
+        print(f"[{i+1}/{len(df_races)}] Scraping {location} {time_}...")
 
-        df_scraped = scrape_results(driver, url) if SCRAPE_MODE == "results" else scrape_prerace(driver, url)
-        if not df_scraped.empty:
-            df_scraped["Date"] = row["Date"]
-            df_scraped["RaceTime"] = row["Time"]
-            all_data.append(df_scraped)
+        prerace_df = pd.DataFrame()
+        postrace_df = pd.DataFrame()
+
+        # --- Run pre-race ---
+        if pd.notna(prerace_url) and prerace_url.strip():
+            prerace_df = scrape_prerace(driver, prerace_url)
+            if not prerace_df.empty:
+                prerace_df["Date"] = date_
+                prerace_df["RaceTime"] = time_
+                prerace_data.append(prerace_df)
+
+        # --- Run post-race ---
+        if pd.notna(postrace_url) and postrace_url.strip():
+            postrace_df = scrape_results(driver, postrace_url)
+            if not postrace_df.empty:
+                postrace_df["Date"] = date_
+                postrace_df["RaceTime"] = time_
+                postrace_data.append(postrace_df)
+
+        # --- Determine status ---
+        if not prerace_df.empty and not postrace_df.empty:
+            status = "Complete"
+        elif not prerace_df.empty or not postrace_df.empty:
+            status = "In Progress"
+
+        updated_rows.append({
+            "Date": date_,
+            "Location": location,
+            "Time": time_,
+            "Status": status
+        })
+
+        print(f"   → {status}")
 
     driver.quit()
 
-    if all_data:
-        df_all = pd.concat(all_data, ignore_index=True)
-        upload_to_bigquery(df_all, SCRAPE_MODE)
-    else:
-        print("⚠️ No races scraped.")
+    # --- Upload data ---
+    if prerace_data:
+        upload_to_bigquery(pd.concat(prerace_data, ignore_index=True), "PreRace")
+    if postrace_data:
+        upload_to_bigquery(pd.concat(postrace_data, ignore_index=True), "PostRace")
+
+    # --- Append status snapshot ---
+    append_status_updates(updated_rows)
+
+    # --- Summary ---
+    print(f"\n🏁 Finished scraping {len(df_races)} races.")
+    print(f"✅ {sum(1 for r in updated_rows if r['Status']=='Complete')} complete")
+    print(f"🕓 {sum(1 for r in updated_rows if r['Status']=='In Progress')} in progress")
 
 if __name__ == "__main__":
     main()
