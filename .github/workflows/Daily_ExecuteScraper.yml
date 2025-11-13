@@ -1,4 +1,4 @@
-name: Daily - Scrape Races From Spine (Prerace + Postrace)
+name: 🕒 Scrape Races From Today (3am)
 
 on:
   schedule:
