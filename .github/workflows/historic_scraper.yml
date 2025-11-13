@@ -1,0 +1,30 @@
+name: 🏇 History - Scrape From Spine
+
+on:
+  workflow_dispatch:  # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create BigQuery credentials file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+      - name: Run Scraper
+        env:
+          SCRAPE_MODE: prerace  # change to 'results' to test postrace mode
+        run: python "1. History/2. ScrapeFromSpine.py"
