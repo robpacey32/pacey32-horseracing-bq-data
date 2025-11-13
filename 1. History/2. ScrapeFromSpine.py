@@ -419,7 +419,7 @@ def main():
             "Date": row["Date"],
             "Location": row["Location"],
             "Time": row["Time"],
-            "prerace_URL": prerace_URL,
+            "prerace_URL": prerace_url,
             "postrace_URL": postrace_url,
             "Status": status
         })
