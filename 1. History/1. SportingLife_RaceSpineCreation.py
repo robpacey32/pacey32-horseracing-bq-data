@@ -66,25 +66,25 @@ def get_race_urls(results_date, existing_urls=None, skip_prerace_urls=None, debu
 
                 # 🧩 Ensure correct structure for prerace URL (must include /racecard/)
                 if "/racecards/" in relative_url:
+                    # Hybrid format without /racecard/ segment
                     if "/racecard/" not in relative_url:
-                        # Expected format: /racing/racecards/YYYY-MM-DD/COURSE/RACEID/NAME
                         parts = relative_url.strip("/").split("/")
                         if len(parts) >= 6:
                             relative_url = f"/racing/racecards/{parts[2]}/{parts[3]}/racecard/{parts[4]}/{parts[5]}"
                     prerace_url = "https://www.sportinglife.com" + relative_url
 
-                    # Build postrace URL (if it exists)
-                    postrace_url = relative_url.replace("/racecards/", "/results/")
-                    postrace_url = "https://www.sportinglife.com" + postrace_url
+                    # Build results URL
+                    postrace_url = "https://www.sportinglife.com" + relative_url.replace("/racecards/", "/results/")
 
                 elif "/results/" in relative_url:
                     postrace_url = "https://www.sportinglife.com" + relative_url
-                    prerace_url = relative_url.replace("/results/", "/racecards/")
+                    prerace_url = "https://www.sportinglife.com" + relative_url.replace("/results/", "/racecards/")
+
                     if "/racecard/" not in prerace_url:
                         parts = prerace_url.strip("/").split("/")
                         if len(parts) >= 6:
                             prerace_url = f"/racing/racecards/{parts[2]}/{parts[3]}/racecard/{parts[4]}/{parts[5]}"
-                    prerace_url = "https://www.sportinglife.com" + prerace_url
+
                 else:
                     continue
 
