@@ -31,4 +31,4 @@ jobs:
 
       # Run scraper (only prerace, abandoned races)
       - name: Run Abandoned PreRace Scraper
-        run: python "2. Daily/3. Scrape_Abandoned_PreRace.py"
+        run: python "1. History/3. Run PreRace on Abandoned.py"
