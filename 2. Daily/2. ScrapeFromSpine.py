@@ -347,9 +347,15 @@ def upload_to_bigquery(df, table_suffix):
     if df.empty:
         print(f"⚠️ No {table_suffix} data to upload — skipping.")
         return
+
+    # Add timestamp
+    df["load_timestamp"] = datetime.utcnow()
+    
     credentials = service_account.Credentials.from_service_account_file(KEY_PATH)
     client = bigquery.Client(credentials=credentials, project=PROJECT_ID)
+    
     table_id = f"{PROJECT_ID}.{DATASET_ID}.Scrape_{table_suffix}"
+    
     job_config = bigquery.LoadJobConfig(write_disposition="WRITE_APPEND", autodetect=True)
     client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
     print(f"✅ Uploaded {len(df)} rows to {table_id}")
