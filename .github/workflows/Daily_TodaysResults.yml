@@ -27,4 +27,5 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
       - name: Run RaceSpineCreation_Results.py
-        run: python "1. Daily Spine Creation/1a. RaceSpineCreation_Results.py"
+        run: python "2. Daily/1a. RaceSpineCreation_Results.py"
+        
