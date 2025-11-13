@@ -32,7 +32,7 @@ PROJECT_ID = "horseracing-pacey32-github"
 DATASET_ID = "horseracescrape"
 VIEW_NAME = "RaceSpine_Latest"
 KEY_PATH = "key.json"
-MAX_RACES = int(os.getenv("MAX_RACES", "5"))
+MAX_RACES = int(os.getenv("MAX_RACES", "200"))
 
 # ===============================================================
 # 🔗 LOAD RACES FROM BIGQUERY
@@ -47,7 +47,7 @@ def load_pending_races():
         SELECT Date, Location, Time, prerace_URL, postrace_URL, Status
         FROM `{PROJECT_ID}.{DATASET_ID}.{VIEW_NAME}`
         WHERE Status = 'Pending'
-        ORDER BY Location, Time
+        ORDER BY date desc, Location, Time
         LIMIT {MAX_RACES}
     """
     df = client.query(query).to_dataframe()
