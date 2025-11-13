@@ -1,8 +1,8 @@
 # ===============================================================
 # 🏇 SCRAPE ABANDONED RACES — PRERACE ONLY
 # ---------------------------------------------------------------
-# Pull races where Status contains 'Abandoned' but NOT already
-# starting with "PreRace Completed".
+# Pulls races where Status contains 'Abandoned' but NOT already
+# marked "PreRace Completed -".
 #
 # Saves prerace data to Scrape_PreRace_TEST
 # Updates RaceSpine status to:
@@ -26,7 +26,6 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from webdriver_manager.chrome import ChromeDriverManager
 
-
 # ===============================================================
 # ⚙️ CONFIG
 # ===============================================================
@@ -48,8 +47,8 @@ def load_abandoned_races():
         SELECT Date, Location, Time, prerace_URL, Status
         FROM `{PROJECT_ID}.{DATASET_ID}.{VIEW_NAME}`
         WHERE LOWER(Status) LIKE '%abandoned%'
-          AND NOT STARTS_WITH(Status, 'Prerace Completed')
           AND NOT STARTS_WITH(Status, 'PreRace Completed')
+          AND NOT STARTS_WITH(Status, 'Prerace Completed')
         ORDER BY Date DESC, Location, Time
         LIMIT 50
     """
@@ -78,112 +77,140 @@ def setup_driver():
 
 
 # ===============================================================
-# 🐎 SCRAPE PRE-RACE
+# 🐎 SCRAPE PRE-RACE — USING YOUR ORIGINAL WORKING LOGIC
 # ===============================================================
 def scrape_prerace(driver, prerace_url, max_retries=3):
+    """Scrape pre-race info and horse-level data from Sporting Life."""
     data = []
 
-    def safe(elem, css=None):
+    def safe_text(elem, css=None, attr="text", default="N/A"):
+        """Safely extract text or attributes."""
         try:
             if css:
                 elem = elem.find_element(By.CSS_SELECTOR, css)
-            return elem.text.strip()
+            return elem.text.strip() if attr == "text" else elem.get_attribute(attr)
         except Exception:
-            return "N/A"
+            return default
 
     for attempt in range(max_retries):
         try:
             driver.get(prerace_url)
             time.sleep(2)
 
-            # --- Race Info ---
-            race_name = safe(driver, "h1[data-test-id='racecard-race-name']")
-            race_date_raw = safe(driver, "p[class*='CourseListingHeader__StyledMainSubTitle']")
-
+            # --- Race info ---
+            race_name = safe_text(driver, "h1[data-test-id='racecard-race-name']")
+            race_date_txt = safe_text(driver, "p[class*='CourseListingHeader__StyledMainSubTitle']")
             try:
-                d = datetime.strptime(race_date_raw, "%A %d %B %Y")
-                race_date = d.strftime("%d/%m/%Y")
-                race_dow = d.strftime("%A")
-            except:
-                race_date, race_dow = "N/A", "N/A"
+                date_obj = datetime.strptime(race_date_txt, "%A %d %B %Y")
+                race_date = date_obj.strftime("%d/%m/%Y")
+                race_day_of_week = date_obj.strftime("%A")
+            except Exception:
+                race_date, race_day_of_week = "N/A", "N/A"
 
-            course_line = safe(driver, "p[class*='CourseListingHeader__StyledMainTitle']")
-            if " " in course_line:
-                race_time, race_location = course_line.split(" ", 1)
+            race_location_txt = safe_text(driver, "p[class*='CourseListingHeader__StyledMainTitle']")
+            if " " in race_location_txt:
+                race_time, race_location = race_location_txt.split(" ", 1)
             else:
-                race_time, race_location = "N/A", course_line
+                race_time, race_location = "N/A", race_location_txt
 
-            # ===================================================
-            # FIXED METADATA EXTRACTION (NO MORE OVERFILLED FIELDS)
-            # ===================================================
-            r_class = r_dist = r_going = r_runners = r_surface = win_time = off_time = "N/A"
+            race_class = race_distance = race_going = race_runners = race_surface = winning_time = off_time = "N/A"
 
-            rows = driver.find_elements(
+            # 🔍 This is your original clean parsing using '|' splits
+            for elem in driver.find_elements(
                 By.CSS_SELECTOR,
                 "li.RacingRacecardSummary__StyledAdditionalInfo-sc-ff7de2c2-3"
+            ):
+                for part in [p.strip() for p in elem.text.split("|")]:
+                    if match := re.search(r"Class\s+(\d+)", part):
+                        race_class = match.group(1)
+                    elif match := re.search(r"Winning time:\s*([0-9m\s\.]+)", part):
+                        winning_time = match.group(1).strip()
+                    elif match := re.search(r"Off time:\s*([0-9:]+)", part):
+                        off_time = match.group(1)
+                    elif re.search(r"\d+\s*(m|f|y)", part):
+                        race_distance = part
+                    elif any(word in part for word in ["Heavy", "Soft", "Good", "Firm", "Standard", "Yielding", "Fast", "Slow"]):
+                        race_going = part
+                    elif match := re.search(r"(\d+)\s*Runners?", part):
+                        race_runners = match.group(1)
+                    elif re.search(r"(Turf|Allweather|All Weather|AW|Polytrack|Fibresand|Tapeta|Dirt)", part, re.I):
+                        race_surface = part
+
+            # --- Horse info ---
+            horse_containers = driver.find_elements(
+                By.CSS_SELECTOR,
+                "div[class*='Runner__StyledRunnerContainer']"
             )
 
-            for elem in rows:
-                txt = elem.text.strip()
+            for parent in horse_containers:
+                try:
+                    horse_number = safe_text(parent, "div[data-test-id='saddle-cloth-no']")
+                    stall_no = safe_text(parent, "div[data-test-id='stall-no']", default="N/A").strip("()")
+                    horse_name = safe_text(parent, "a[data-test-id='horse-name-link']")
+                    headgear = safe_text(parent, "sup[data-test-id='headgear']", default="")
+                    last_run = safe_text(parent, "sup[data-test-id='last-ran']", default="")
+                    commentary = safe_text(parent, "div[data-test-id='commentary']", default="N/A")
 
-                # Class
-                if m := re.search(r"\bClass\s+(\d+)", txt):
-                    r_class = m.group(1)
+                    sub_info_elem = parent.find_element(By.CSS_SELECTOR, "div[data-test-id='horse-sub-info']")
+                    sub_info_text = sub_info_elem.text
+                    age = re.search(r"Age: (\d+)", sub_info_text)
+                    weight = re.search(r"Weight: ([\d-]+)", sub_info_text)
 
-                # Runners
-                if m := re.search(r"(\d+)\s*Runners?", txt):
-                    r_runners = m.group(1)
+                    jockey_name = safe_text(
+                        sub_info_elem,
+                        "a[href*='/jockey/'] span",
+                        default="N/A"
+                    ).replace("J:", "").strip()
 
-                # Distance (ensure only the distance part)
-                if re.search(r"\d+\s*(m|f|y)", txt) and "Runners" not in txt and "Class" not in txt:
-                    cleaned = txt.split("|")[0].strip()
-                    r_dist = cleaned
+                    trainer_name = safe_text(
+                        sub_info_elem,
+                        "a[href*='/trainer/'] span",
+                        default="N/A"
+                    ).replace("T:", "").strip()
 
-                # Going
-                if re.search(r"(Soft|Good|Firm|Heavy|Standard|Yielding)", txt) and "Runners" not in txt:
-                    r_going = txt
+                    odds = safe_text(parent, "span[class*='BetLink']")
+                    history_stats = " | ".join(
+                        [s.text.strip()
+                         for s in parent.find_elements(
+                             By.CSS_SELECTOR,
+                             "span[data-test-id^='race-history-stat-']"
+                         )]
+                    )
 
-                # Surface
-                if re.search(r"(Turf|Tapeta|Polytrack|AW|Dirt)", txt, re.I):
-                    r_surface = txt
+                    data.append({
+                        "HorseNumber": horse_number,
+                        "StallNumber": stall_no,
+                        "HorseName": horse_name,
+                        "Headgear": headgear,
+                        "LastRun": last_run,
+                        "Commentary": commentary,
+                        "Age": age.group(1) if age else "",
+                        "Weight": weight.group(1) if weight else "",
+                        "Jockey": jockey_name,
+                        "Trainer": trainer_name,
+                        "Odds": odds,
+                        "RaceHistoryStats": history_stats,
+                        "RaceDate": race_date,
+                        "RaceDayOfWeek": race_day_of_week,
+                        "RaceLocation": race_location,
+                        "RaceName": race_name,
+                        "RaceTime": race_time,
+                        "RaceClass": race_class,
+                        "RaceDistance": race_distance,
+                        "RaceGoing": race_going,
+                        "RaceRunners": race_runners,
+                        "RaceSurface": race_surface,
+                        "WinningTime": winning_time,
+                        "OffTime": off_time,
+                        "SourceURL": prerace_url
+                    })
+                except Exception:
+                    continue
 
-                # Winning time
-                if m := re.search(r"Winning time:\s*([0-9m\s\.]+)", txt):
-                    win_time = m.group(1).strip()
-
-                # Off time
-                if m := re.search(r"Off time:\s*([0-9:]+)", txt):
-                    off_time = m.group(1)
-
-            # --- Horse Rows ---
-            horses = driver.find_elements(By.CSS_SELECTOR, "div[class*='Runner__StyledRunnerContainer']")
-            for h in horses:
-                data.append({
-                    "HorseNumber": safe(h, "div[data-test-id='saddle-cloth-no']"),
-                    "StallNumber": safe(h, "div[data-test-id='stall-no']").strip("()"),
-                    "HorseName": safe(h, "a[data-test-id='horse-name-link']"),
-                    "Headgear": safe(h, "sup[data-test-id='headgear']"),
-                    "LastRun": safe(h, "sup[data-test-id='last-ran']"),
-                    "Commentary": safe(h, "div[data-test-id='commentary']"),
-                    "RaceDate": race_date,
-                    "RaceDayOfWeek": race_dow,
-                    "RaceLocation": race_location,
-                    "RaceName": race_name,
-                    "RaceTime": race_time,
-                    "RaceClass": r_class,
-                    "RaceDistance": r_dist,
-                    "RaceGoing": r_going,
-                    "RaceRunners": r_runners,
-                    "RaceSurface": r_surface,
-                    "WinningTime": win_time,
-                    "OffTime": off_time,
-                    "SourceURL": prerace_url
-                })
-
-            break
+            break  # success → exit retry loop
 
         except TimeoutException:
-            time.sleep(2)
+            time.sleep(3)
 
     return pd.DataFrame(data)
 
