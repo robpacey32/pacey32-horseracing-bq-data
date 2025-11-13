@@ -416,10 +416,12 @@ def main():
             status = "In Progress"
 
         updated_rows.append({
-            "Date": date_,
-            "Location": location,
-            "Time": time_,
-            "Status": status
+            "Date": row["Date"],
+            "Location": row["Location"],
+            "Time": row["Time"],
+            "prerace_URL": row["prerace_URL"],
+            "postrace_URL": row.get("postrace_URL", ""),
+            "Status": new_status
         })
         print(f"   → {status}")
 
