@@ -228,7 +228,7 @@ def upload_prerace(df):
     credentials = service_account.Credentials.from_service_account_file(KEY_PATH)
     client = bigquery.Client(credentials=credentials, project=PROJECT_ID)
 
-    table_id = f"{PROJECT_ID}.{DATASET_ID}.Scrape_PreRace_TEST"
+    table_id = f"{PROJECT_ID}.{DATASET_ID}.Scrape_PreRace"
     config = bigquery.LoadJobConfig(write_disposition="WRITE_APPEND", autodetect=True)
     client.load_table_from_dataframe(df, table_id, config).result()
 
@@ -282,6 +282,8 @@ def main():
             "Date": row["Date"],
             "Location": row["Location"],
             "Time": row["Time"],
+            "prerace_URL": row["prerace_URL"],
+            "postrace_URL": row.get("postrace_URL", ""),
             "Status": new_status
         })
 
