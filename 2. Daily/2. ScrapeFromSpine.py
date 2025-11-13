@@ -32,7 +32,7 @@ PROJECT_ID = "horseracing-pacey32-github"
 DATASET_ID = "horseracescrape"
 VIEW_NAME = "RaceSpine_Latest"
 KEY_PATH = "key.json"
-MAX_RACES = int(os.getenv("MAX_RACES", "5"))
+MAX_RACES = int(os.getenv("MAX_RACES", "200"))
 
 # ===============================================================
 # 🔗 LOAD RACES FROM BIGQUERY
