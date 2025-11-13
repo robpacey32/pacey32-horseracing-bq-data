@@ -1,0 +1,34 @@
+name: 🏇 History - Scrape Abandoned Races
+
+on:
+  # Allow manual execution
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Install dependencies
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Create BigQuery credentials file
+      - name: Create BigQuery key file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+      # Run scraper (only prerace, abandoned races)
+      - name: Run Abandoned PreRace Scraper
+        run: python "2. Daily/3. Scrape_Abandoned_PreRace.py"
