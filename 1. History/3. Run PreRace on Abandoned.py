@@ -50,6 +50,7 @@ def load_abandoned_races():
         WHERE LOWER(Status) LIKE '%abandoned%'
           AND NOT STARTS_WITH(Status, 'PreRace Completed')
         ORDER BY Date DESC, Location, Time
+        LIMIT 10
     """
 
     df = client.query(query).to_dataframe()
