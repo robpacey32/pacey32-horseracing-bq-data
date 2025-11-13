@@ -1,4 +1,4 @@
-name: Horse Racing - Historic RaceSpine → BigQuery
+name: 🏇 History - Pull Spine
 
 on:
   workflow_dispatch:   # ✅ Only runs when manually triggered
