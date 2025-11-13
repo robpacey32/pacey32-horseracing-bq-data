@@ -33,7 +33,7 @@ PROJECT_ID = "horseracing-pacey32-github"
 DATASET_ID = "horseracescrape"
 VIEW_NAME = "RaceSpine_Latest"
 KEY_PATH = "key.json"
-
+MAX_RACES = int(os.getenv("MAX_RACES", "5"))
 
 # ===============================================================
 # 🔗 LOAD ABANDONED RACES FROM BIGQUERY
@@ -50,7 +50,7 @@ def load_abandoned_races():
           AND NOT STARTS_WITH(Status, 'PreRace Completed')
           AND NOT STARTS_WITH(Status, 'Prerace Completed')
         ORDER BY Date DESC, Location, Time
-        LIMIT 50
+        LIMIT {MAX_RACES}
     """
 
     df = client.query(query).to_dataframe()
