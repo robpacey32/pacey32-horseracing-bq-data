@@ -1,10 +1,10 @@
 # ===============================================================
 # 🏇 SCRAPE ABANDONED RACES — PRERACE ONLY
 # ---------------------------------------------------------------
-# Pulls races where Status contains 'Abandoned' but NOT already
-# marked "PreRace Completed -".
+# Pull races where Status contains 'Abandoned' but NOT already
+# starting with "PreRace Completed".
 #
-# Saves prerace data to Scrape_PreRace
+# Saves prerace data to Scrape_PreRace_TEST
 # Updates RaceSpine status to:
 #   PreRace Completed - {previous status}
 #
@@ -48,9 +48,10 @@ def load_abandoned_races():
         SELECT Date, Location, Time, prerace_URL, Status
         FROM `{PROJECT_ID}.{DATASET_ID}.{VIEW_NAME}`
         WHERE LOWER(Status) LIKE '%abandoned%'
+          AND NOT STARTS_WITH(Status, 'Prerace Completed')
           AND NOT STARTS_WITH(Status, 'PreRace Completed')
         ORDER BY Date DESC, Location, Time
-        LIMIT 10
+        LIMIT 50
     """
 
     df = client.query(query).to_dataframe()
@@ -87,40 +88,9 @@ def scrape_prerace(driver, prerace_url, max_retries=3):
             if css:
                 elem = elem.find_element(By.CSS_SELECTOR, css)
             return elem.text.strip()
-        except:
+        except Exception:
             return "N/A"
 
-    # -----------------------------------------------------------
-    # NEW: Clean "Class | Distance | Runners | Surface" parser
-    # -----------------------------------------------------------
-    def parse_meta_block(meta_text):
-        """Parse the classic 4-piece metadata block cleanly."""
-        race_class = race_dist = race_runners = race_surface = "N/A"
-
-        if not meta_text or meta_text == "N/A":
-            return race_class, race_dist, race_runners, race_surface
-
-        # Everything will be split by pipe
-        parts = [p.strip() for p in meta_text.split("|")]
-
-        if len(parts) >= 1 and "Class" in parts[0]:
-            race_class = parts[0].replace("Class", "").strip()
-
-        if len(parts) >= 2:
-            race_dist = parts[1]
-
-        if len(parts) >= 3:
-            # Extract e.g. "14" from "14 Runners"
-            race_runners = re.sub(r"\D", "", parts[2])
-
-        if len(parts) >= 4:
-            race_surface = parts[3]
-
-        return race_class, race_dist, race_runners, race_surface
-
-    # ===========================================================
-    # MAIN SCRAPE LOOP
-    # ===========================================================
     for attempt in range(max_retries):
         try:
             driver.get(prerace_url)
@@ -143,36 +113,49 @@ def scrape_prerace(driver, prerace_url, max_retries=3):
             else:
                 race_time, race_location = "N/A", course_line
 
-            # ---------------------------------------------------
-            # FIXED META BLOCK
-            # ---------------------------------------------------
-            try:
-                meta_elem = driver.find_element(By.CSS_SELECTOR, "ul.RacingRacecardSummary__StyledAdditionalInfoList")
-                meta_text = meta_elem.text.replace("\n", " | ")
-            except:
-                meta_text = "N/A"
+            # ===================================================
+            # FIXED METADATA EXTRACTION (NO MORE OVERFILLED FIELDS)
+            # ===================================================
+            r_class = r_dist = r_going = r_runners = r_surface = win_time = off_time = "N/A"
 
-            r_class, r_dist, r_runners, r_surface = parse_meta_block(meta_text)
+            rows = driver.find_elements(
+                By.CSS_SELECTOR,
+                "li.RacingRacecardSummary__StyledAdditionalInfo-sc-ff7de2c2-3"
+            )
 
-            # ---------------------------------------------------
-            # WINNING + OFF TIME (unchanged)
-            # ---------------------------------------------------
-            win_time = "N/A"
-            off_time = "N/A"
-
-            rows = driver.find_elements(By.CSS_SELECTOR, "li.RacingRacecardSummary__StyledAdditionalInfo-sc-ff7de2c2-3")
             for elem in rows:
-                txt = elem.text
+                txt = elem.text.strip()
 
-                if m := re.search(r"Winning time:\s*(.*)", txt):
+                # Class
+                if m := re.search(r"\bClass\s+(\d+)", txt):
+                    r_class = m.group(1)
+
+                # Runners
+                if m := re.search(r"(\d+)\s*Runners?", txt):
+                    r_runners = m.group(1)
+
+                # Distance (ensure only the distance part)
+                if re.search(r"\d+\s*(m|f|y)", txt) and "Runners" not in txt and "Class" not in txt:
+                    cleaned = txt.split("|")[0].strip()
+                    r_dist = cleaned
+
+                # Going
+                if re.search(r"(Soft|Good|Firm|Heavy|Standard|Yielding)", txt) and "Runners" not in txt:
+                    r_going = txt
+
+                # Surface
+                if re.search(r"(Turf|Tapeta|Polytrack|AW|Dirt)", txt, re.I):
+                    r_surface = txt
+
+                # Winning time
+                if m := re.search(r"Winning time:\s*([0-9m\s\.]+)", txt):
                     win_time = m.group(1).strip()
 
+                # Off time
                 if m := re.search(r"Off time:\s*([0-9:]+)", txt):
                     off_time = m.group(1)
 
-            # ---------------------------------------------------
-            # Horse Rows
-            # ---------------------------------------------------
+            # --- Horse Rows ---
             horses = driver.find_elements(By.CSS_SELECTOR, "div[class*='Runner__StyledRunnerContainer']")
             for h in horses:
                 data.append({
@@ -189,13 +172,14 @@ def scrape_prerace(driver, prerace_url, max_retries=3):
                     "RaceTime": race_time,
                     "RaceClass": r_class,
                     "RaceDistance": r_dist,
+                    "RaceGoing": r_going,
                     "RaceRunners": r_runners,
                     "RaceSurface": r_surface,
-                    "RaceGoing": "N/A",   # Not always available in abandoned
                     "WinningTime": win_time,
                     "OffTime": off_time,
                     "SourceURL": prerace_url
                 })
+
             break
 
         except TimeoutException:
@@ -264,8 +248,8 @@ def main():
         if not pre_df.empty:
             prerace_all.append(pre_df)
 
-        prev = row["Status"]
-        new_status = f"PreRace Completed - {prev}"
+        prev_status = row["Status"]
+        new_status = f"PreRace Completed - {prev_status}"
 
         status_updates.append({
             "Date": row["Date"],
