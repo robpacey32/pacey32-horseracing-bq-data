@@ -48,6 +48,12 @@ def get_todays_races(debug=False):
         course_elem = meeting.find("span", attrs={"data-test-id": "course-name"})
         location = course_elem.get_text(strip=True) if course_elem else "N/A"
 
+        # --- Meeting-level abandoned reason ---
+        meeting_abandoned_reason = None
+        header_reason = meeting.find("span", class_=re.compile(r"HeaderDetails__Abandoned"))
+        if header_reason:
+            meeting_abandoned_reason = header_reason.get_text(strip=True)
+
         # --- Races in meeting ---
         race_containers = meeting.find_all("div", attrs={"data-test-id": "race-container"})
         if debug:
@@ -68,21 +74,22 @@ def get_todays_races(debug=False):
                     continue
                 relative_url = a_tag["href"]
 
-                # Ensure correct /racecard/ structure
+                # Convert URL properly
                 if "/racecards/" in relative_url:
-                    if "/racecard/" not in relative_url:
-                        parts = relative_url.strip("/").split("/")
-                        if len(parts) >= 6:
-                            relative_url = f"/racing/racecards/{parts[2]}/{parts[3]}/racecard/{parts[4]}/{parts[5]}"
                     prerace_url = "https://www.sportinglife.com" + relative_url
+
+                elif "/results/" in relative_url:
+                    # convert to racecard
+                    prerace_url = "https://www.sportinglife.com" + relative_url.replace("/results/", "/racecards/")
+
                 else:
                     continue
 
                 # --- Status logic ---
-                status = "Pending"
-                abandoned_elem = race.find("div", class_=re.compile(r"AbandonedIcon|Abandoned"))
-                if abandoned_elem:
-                    status = "Abandoned"
+                if meeting_abandoned_reason:
+                    status = meeting_abandoned_reason
+                else:
+                    status = "Pending"
 
                 # Append row
                 url_rows.append({
@@ -105,6 +112,33 @@ def get_todays_races(debug=False):
         print(f"[get_todays_races] Extracted {len(df)} races for {today_str}")
 
     return df
+
+
+# ===============================================================
+# ☁️ FUNCTION: Write to BigQuery
+# ===============================================================
+def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="horseracescrape",
+                      table="RaceSpine", key_path="key.json"):
+    """Append the DataFrame to BigQuery using an explicit service account key file."""
+    if df.empty:
+        print("⚠️ No races found — skipping BigQuery upload.")
+        return
+
+    # --- Add load timestamp ---
+    df["load_timestamp"] = datetime.utcnow()
+    table_id = f"{project_id}.{dataset}.{table}"
+
+    credentials = service_account.Credentials.from_service_account_file(key_path)
+    client = bigquery.Client(credentials=credentials, project=project_id)
+
+    job_config = bigquery.LoadJobConfig(
+        write_disposition="WRITE_APPEND",
+        autodetect=True,
+    )
+    job = client.load_table_from_dataframe(df, table_id, job_config=job_config)
+    job.result()
+
+    print(f"✅ Uploaded {len(df)} rows to {table_id}")
 
 
 # ===============================================================
