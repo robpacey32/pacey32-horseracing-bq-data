@@ -1,4 +1,4 @@
-name: Daily - Update Race Spine (Postrace URLs - 10pm)
+name: 🕒 Update Race Spine (Postrace @ 10pm)
 
 on:
   schedule:
