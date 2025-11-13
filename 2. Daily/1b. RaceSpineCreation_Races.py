@@ -72,31 +72,17 @@ def get_todays_races(debug=False):
                 a_tag = race.find("a", href=True)
                 if not a_tag:
                     continue
-                
+
                 relative_url = a_tag["href"].strip()
-                
-                # Case 1: Already under /racecards/
+
+                # CASE 1 — Already a racecard URL → use as-is
                 if "/racecards/" in relative_url:
-                    parts = relative_url.strip("/").split("/")
-                    if len(parts) >= 6:
-                        date = parts[2]
-                        course = parts[3]
-                        race_id = parts[4]
-                        race_name = parts[5]
-                        relative_url = f"/racing/racecards/{date}/{course}/racecard/{race_id}/{race_name}"
                     prerace_url = "https://www.sportinglife.com" + relative_url
-                
-                # Case 2: A /results/ link → convert properly
+
+                # CASE 2 — It's a results URL → convert directly
                 elif "/results/" in relative_url:
-                    parts = relative_url.strip("/").split("/")
-                    if len(parts) >= 6:
-                        date = parts[2]
-                        course = parts[3]
-                        race_id = parts[4]
-                        race_name = parts[5]
-                        relative_url = f"/racing/racecards/{date}/{course}/racecard/{race_id}/{race_name}"
-                    prerace_url = "https://www.sportinglife.com" + relative_url
-                
+                    prerace_url = "https://www.sportinglife.com" + relative_url.replace("/results/", "/racecards/")
+
                 else:
                     continue
 
@@ -127,7 +113,6 @@ def get_todays_races(debug=False):
         print(f"[get_todays_races] Extracted {len(df)} races for {today_str}")
 
     return df
-
 
 # ===============================================================
 # ☁️ FUNCTION: Write to BigQuery
