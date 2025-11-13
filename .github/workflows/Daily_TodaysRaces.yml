@@ -1,4 +1,4 @@
-name: Daily - Create Race Spine (Prerace URLs - 2am)
+name: 🕒 Create Race Spine (Prerace @ 2am)
 
 on:
   schedule:
