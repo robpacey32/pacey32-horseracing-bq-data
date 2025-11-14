@@ -47,19 +47,19 @@ def load_race_data():
         s.Status AS RaceStatus
     FROM `{PROJECT_ID}.{DATASET}.RaceFull_Latest` f
     LEFT JOIN spine_latest s
-        ON f.Pre_SourceURL = s.prerace_URL    -- 🔥 FIXED JOIN
+        ON f.Pre_SourceURL = s.prerace_URL
        AND s.rn = 1
     """
 
     df = client.query(query).result().to_dataframe()
 
-    # Convert Pre_RaceDate to actual dates
+    # Parse UK date format (DD/MM/YYYY) safely
     if "Pre_RaceDate" in df.columns:
-    df["Pre_RaceDate"] = pd.to_datetime(
-        df["Pre_RaceDate"],
-        dayfirst=True,
-        errors="coerce"
-    ).dt.date
+        df["Pre_RaceDate"] = pd.to_datetime(
+            df["Pre_RaceDate"],
+            dayfirst=True,
+            errors="coerce"
+        ).dt.date
 
     return df
 
