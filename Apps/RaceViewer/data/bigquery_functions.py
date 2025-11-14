@@ -48,7 +48,7 @@ def load_race_data():
         s.AbandonmentReason
     FROM `{PROJECT_ID}.{DATASET}.RaceFull_Latest` f
     LEFT JOIN spine_latest s
-        ON f.Pre_SourceURL = s.RaceURL     -- CORRECT JOIN
+        ON f.Pre_SourceURL = s.RaceURL
        AND s.rn = 1
     """
 
