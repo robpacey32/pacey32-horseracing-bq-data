@@ -39,12 +39,12 @@ def get_races_for_date(date_value):
 
     query = f"""
     SELECT DISTINCT
-        Pre_RaceDate,
+        PARSE_DATE('%d/%m/%Y', Pre_RaceDate) AS Pre_RaceDate,
         Pre_RaceLocation,
         Pre_RaceTime,
         Pre_SourceURL
     FROM `{PROJECT_ID}.{DATASET}.RaceFull_Latest`
-    WHERE DATE(Pre_RaceDate) = DATE(@dt)
+    WHERE PARSE_DATE('%d/%m/%Y', Pre_RaceDate) = @dt
     ORDER BY Pre_RaceLocation, Pre_RaceTime
     """
 
@@ -59,11 +59,10 @@ def get_races_for_date(date_value):
 
     df = job.result().to_dataframe()
 
-    # Convert UK dates (DD/MM/YYYY) if needed
+    # We already produced proper DATE() via PARSE_DATE
+    # but enforce to python date for consistency:
     if "Pre_RaceDate" in df.columns:
-        df["Pre_RaceDate"] = pd.to_datetime(
-            df["Pre_RaceDate"], dayfirst=True, errors="coerce"
-        ).dt.date
+        df["Pre_RaceDate"] = pd.to_datetime(df["Pre_RaceDate"]).dt.date
 
     return df
 
