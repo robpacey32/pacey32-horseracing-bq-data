@@ -55,7 +55,11 @@ def load_race_data():
 
     # Convert Pre_RaceDate to actual dates
     if "Pre_RaceDate" in df.columns:
-        df["Pre_RaceDate"] = pd.to_datetime(df["Pre_RaceDate"]).dt.date
+    df["Pre_RaceDate"] = pd.to_datetime(
+        df["Pre_RaceDate"],
+        dayfirst=True,
+        errors="coerce"
+    ).dt.date
 
     return df
 
