@@ -10,7 +10,24 @@ DATASET = "horseracescrape"
 # Private BQ Client
 # ---------------------------
 def _get_bq_client():
-    return bigquery.Client()
+    import os
+    import json
+    from google.oauth2 import service_account
+    from google.cloud import bigquery
+
+    # Load JSON string from Render environment variable
+    json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    if json_str is None:
+        raise ValueError("Environment variable GOOGLE_APPLICATION_CREDENTIALS_JSON is missing.")
+
+    # Convert JSON string → dict
+    info = json.loads(json_str)
+
+    # Create credentials object
+    creds = service_account.Credentials.from_service_account_info(info)
+
+    # Return authenticated BigQuery client
+    return bigquery.Client(credentials=creds, project=info["project_id"])
 
 
 # ---------------------------
