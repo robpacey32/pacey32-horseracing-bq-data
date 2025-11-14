@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: pacey32-race-viewer
+    env: python
+    rootDir: Apps/RaceViewer
+    region: frankfurt
+    plan: free
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+
+    autoDeploy: true
+
+    envVars:
+      - key: GOOGLE_APPLICATION_CREDENTIALS_JSON
+        sync: false   # Required so Render does not overwrite your secret
+
+    domains:
+      - raceviewer.pacey32.com
