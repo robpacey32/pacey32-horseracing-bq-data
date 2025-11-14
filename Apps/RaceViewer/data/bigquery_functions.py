@@ -1,38 +1,67 @@
-import os
-import json
 import pandas as pd
 from google.cloud import bigquery
-from google.oauth2 import service_account
 import streamlit as st
-
 
 PROJECT_ID = "horseracing-pacey32-github"
 DATASET = "horseracescrape"
 
 
-def _get_bq_client() -> bigquery.Client:
-    """
-    Use GOOGLE_APPLICATION_CREDENTIALS_JSON if set (Render),
-    otherwise default credentials (local dev).
-    """
-    creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-    if creds_json:
-        info = json.loads(creds_json)
-        credentials = service_account.Credentials.from_service_account_info(info)
-        return bigquery.Client(credentials=credentials, project=info["project_id"])
-    else:
-        return bigquery.Client(project=PROJECT_ID)
+# ---------------------------
+# Private BQ Client
+# ---------------------------
+def _get_bq_client():
+    return bigquery.Client()
 
 
-@st.cache_data(show_spinner="Loading race data from BigQuery...")
-def load_race_data():
+# ---------------------------
+# 1. Get list of races for a specific date
+# ---------------------------
+@st.cache_data(show_spinner="Loading races for selected date...")
+def get_races_for_date(date_value):
+    client = _get_bq_client()
+
+    query = f"""
+    SELECT DISTINCT
+        Pre_RaceDate,
+        Pre_RaceLocation,
+        Pre_RaceTime,
+        Pre_SourceURL
+    FROM `{PROJECT_ID}.{DATASET}.RaceFull_Latest`
+    WHERE DATE(Pre_RaceDate) = DATE(@dt)
+    ORDER BY Pre_RaceLocation, Pre_RaceTime
+    """
+
+    job = client.query(
+        query,
+        job_config=bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("dt", "DATE", date_value)
+            ]
+        )
+    )
+
+    df = job.result().to_dataframe()
+
+    # Convert UK dates (DD/MM/YYYY) if needed
+    if "Pre_RaceDate" in df.columns:
+        df["Pre_RaceDate"] = pd.to_datetime(
+            df["Pre_RaceDate"], dayfirst=True, errors="coerce"
+        ).dt.date
+
+    return df
+
+
+# ---------------------------
+# 2. Load full race details for a single race
+# ---------------------------
+@st.cache_data(show_spinner="Loading race data...")
+def get_single_race(pre_source_url):
     client = _get_bq_client()
 
     query = f"""
     WITH spine_latest AS (
         SELECT
             prerace_URL,
-            postrace_URL,
             Status,
             load_timestamp,
             ROW_NUMBER() OVER (
@@ -49,45 +78,80 @@ def load_race_data():
     LEFT JOIN spine_latest s
         ON f.Pre_SourceURL = s.prerace_URL
        AND s.rn = 1
+    WHERE f.Pre_SourceURL = @url
     """
 
-    df = client.query(query).result().to_dataframe()
+    job = client.query(
+        query,
+        job_config=bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("url", "STRING", pre_source_url)
+            ]
+        )
+    )
 
-    # Parse UK date format (DD/MM/YYYY) safely
+    df = job.result().to_dataframe()
+
+    # Convert date properly
     if "Pre_RaceDate" in df.columns:
         df["Pre_RaceDate"] = pd.to_datetime(
-            df["Pre_RaceDate"],
-            dayfirst=True,
-            errors="coerce"
+            df["Pre_RaceDate"], dayfirst=True, errors="coerce"
         ).dt.date
 
     return df
 
 
-def get_filter_options(df: pd.DataFrame):
-    """Return sorted unique options for date, location & race name."""
-    dates = (
-        sorted(df["RaceDate"].dropna().unique())
-        if "RaceDate" in df.columns else []
-    )
-    locations = (
-        sorted(df["RaceLocation"].dropna().unique())
-        if "RaceLocation" in df.columns else []
-    )
-    races = (
-        sorted(df["RaceName_Pre"].dropna().unique())
-        if "RaceName_Pre" in df.columns else []
-    )
-    return dates, locations, races
+# ---------------------------
+# 3. Totals aggregation (used in Totals tab)
+# ---------------------------
+def get_totals(df, entity):
+    df = df.copy()
 
+    # win/place logic
+    def is_win(pos):
+        if pd.isna(pos): return False
+        s = str(pos).lower()
+        for suf in ["st", "nd", "rd", "th"]:
+            if s.endswith(suf):
+                s = s[:-len(suf)]
+        return s.isdigit() and int(s) == 1
 
-def filter_by_selection(df: pd.DataFrame, date, location, race_name) -> pd.DataFrame:
-    """Filter the master DF to the selected race."""
-    out = df.copy()
-    if date is not None and "RaceDate" in out.columns:
-        out = out[out["RaceDate"] == date]
-    if location and location != "—" and "RaceLocation" in out.columns:
-        out = out[out["RaceLocation"] == location]
-    if race_name and race_name != "—" and "RaceName_Pre" in out.columns:
-        out = out[out["RaceName_Pre"] == race_name]
-    return out
+    def is_place(pos):
+        if pd.isna(pos): return False
+        s = str(pos).lower()
+        for suf in ["st", "nd", "rd", "th"]:
+            if s.endswith(suf):
+                s = s[:-len(suf)]
+        return s.isdigit() and int(s) <= 3
+
+    df["Win"] = df["Pos"].apply(is_win)
+    df["Place"] = df["Pos"].apply(is_place)
+
+    if "PrizeMoney" not in df.columns:
+        df["PrizeMoney"] = 0
+
+    # Entity
+    if entity == "Horses":
+        df["Entity"] = df["Post_HorseName"].fillna(df["HorseName"])
+    elif entity == "Jockeys":
+        df["Entity"] = df["Post_Jockey"].fillna(df["Jockey"])
+    else:
+        df["Entity"] = df["Post_Trainer"].fillna(df["Trainer"])
+
+    df = df.dropna(subset=["Entity"])
+
+    summary = (
+        df.groupby("Entity")
+        .agg(
+            Races=("Pre_SourceURL", "nunique"),
+            Wins=("Win", "sum"),
+            Places=("Place", "sum"),
+            TotalPrizeMoney=("PrizeMoney", "sum"),
+        )
+        .reset_index()
+    )
+
+    summary["WinPct"] = (summary["Wins"] / summary["Races"]).round(3)
+    summary = summary.sort_values("TotalPrizeMoney", ascending=False)
+
+    return summary
