@@ -31,12 +31,12 @@ def load_race_data():
     query = f"""
     WITH spine_latest AS (
         SELECT
-            RaceURL,
+            prerace_URL,
+            postrace_URL,
             Status,
-            AbandonmentReason,
             load_timestamp,
             ROW_NUMBER() OVER (
-                PARTITION BY RaceURL
+                PARTITION BY prerace_URL
                 ORDER BY load_timestamp DESC
             ) AS rn
         FROM `{PROJECT_ID}.{DATASET}.RaceSpine_Latest`
@@ -44,17 +44,16 @@ def load_race_data():
 
     SELECT
         f.*,
-        s.Status AS RaceStatus,
-        s.AbandonmentReason
+        s.Status AS RaceStatus
     FROM `{PROJECT_ID}.{DATASET}.RaceFull_Latest` f
     LEFT JOIN spine_latest s
-        ON f.Pre_SourceURL = s.RaceURL
+        ON f.Pre_SourceURL = s.prerace_URL    -- 🔥 FIXED JOIN
        AND s.rn = 1
     """
 
     df = client.query(query).result().to_dataframe()
 
-    # Pre_RaceDate is your correct date column
+    # Convert Pre_RaceDate to actual dates
     if "Pre_RaceDate" in df.columns:
         df["Pre_RaceDate"] = pd.to_datetime(df["Pre_RaceDate"]).dt.date
 
