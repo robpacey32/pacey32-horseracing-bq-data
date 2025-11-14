@@ -1,7 +1,7 @@
 [theme]
 base="light"
-primaryColor="#2f4f2f"          # heritage green (buttons, accents)
-backgroundColor="#e8ecd9"       # your Tableau-style pale green
-secondaryBackgroundColor="#f5f7ee"
-textColor="#1f241c"
+primaryColor="#4B5942"            # heritage green  (maybe 2f4f2f)
+backgroundColor="#E8ECD9"         # your screenshot green
+secondaryBackgroundColor="#F5F7EE"
+textColor="#1F241C"
 font="serif"
