@@ -25,43 +25,38 @@ def _get_bq_client() -> bigquery.Client:
 
 
 @st.cache_data(show_spinner="Loading race data from BigQuery...")
-def load_race_data() -> pd.DataFrame:
-    """
-    Load RaceFull_Latest and join to the latest spine status by RaceURL.
-    Assumes:
-      - RaceFull_Latest has RaceURL, RaceDate, RaceLocation, RaceName_Pre, etc.
-      - RaceSpine_Latest has RaceURL, status, AbandonmentReason, load_timestamp.
-    Adjust column names if your schema differs.
-    """
+def load_race_data():
     client = _get_bq_client()
 
     query = f"""
     WITH spine_latest AS (
-      SELECT
-        RaceURL,
-        Status,
-        AbandonmentReason,
-        load_timestamp,
-        ROW_NUMBER() OVER (
-          PARTITION BY RaceURL
-          ORDER BY load_timestamp DESC
-        ) AS rn
-      FROM `{PROJECT_ID}.{DATASET}.RaceSpine_Latest`
+        SELECT
+            RaceURL,
+            Status,
+            AbandonmentReason,
+            load_timestamp,
+            ROW_NUMBER() OVER (
+                PARTITION BY RaceURL
+                ORDER BY load_timestamp DESC
+            ) AS rn
+        FROM `{PROJECT_ID}.{DATASET}.RaceSpine_Latest`
     )
+
     SELECT
-      f.*,
-      s.Status AS RaceStatus,
-      s.AbandonmentReason
+        f.*,
+        s.Status AS RaceStatus,
+        s.AbandonmentReason
     FROM `{PROJECT_ID}.{DATASET}.RaceFull_Latest` f
     LEFT JOIN spine_latest s
-      ON f.RaceURL = s.RaceURL
-     AND s.rn = 1
+        ON f.Pre_SourceURL = s.RaceURL     -- CORRECT JOIN
+       AND s.rn = 1
     """
+
     df = client.query(query).result().to_dataframe()
 
-    # Standardise key fields (tweak if names differ)
-    if "RaceDate" in df.columns:
-        df["RaceDate"] = pd.to_datetime(df["RaceDate"]).dt.date
+    # Pre_RaceDate is your correct date column
+    if "Pre_RaceDate" in df.columns:
+        df["Pre_RaceDate"] = pd.to_datetime(df["Pre_RaceDate"]).dt.date
 
     return df
 
