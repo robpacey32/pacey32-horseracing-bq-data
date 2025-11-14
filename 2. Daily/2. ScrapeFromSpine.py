@@ -413,7 +413,7 @@ def main():
         if not prerace_df.empty and not postrace_df.empty:
             status = "Complete"
         elif not prerace_df.empty or not postrace_df.empty:
-            status = "In Progress"
+            status = "Pending"
 
         updated_rows.append({
             "Date": row["Date"],
@@ -436,7 +436,7 @@ def main():
 
     print(f"\n🏁 Finished scraping {len(df_races)} races.")
     print(f"✅ {sum(1 for r in updated_rows if r['Status']=='Complete')} complete")
-    print(f"🕓 {sum(1 for r in updated_rows if r['Status']=='In Progress')} in progress")
+    print(f"🕓 {sum(1 for r in updated_rows if r['Status']=='Pending')} in progress")
 
 if __name__ == "__main__":
     main()
