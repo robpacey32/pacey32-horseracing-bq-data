@@ -421,7 +421,7 @@ def main():
             "Time": row["Time"],
             "prerace_URL": row["prerace_URL"],
             "postrace_URL": row.get("postrace_URL", ""),
-            "Status": new_status
+            "Status": status
         })
         print(f"   → {status}")
 
