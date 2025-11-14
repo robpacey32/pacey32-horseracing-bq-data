@@ -1,0 +1,60 @@
+/* Global background and font */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: #E8ECD9 !important;
+    font-family: "Georgia", "Times New Roman", serif !important;
+}
+
+/* Main title and headings */
+h1, h2, h3, h4 {
+    color: #4B5942 !important;
+    font-weight: 600 !important;
+}
+
+/* Remove default Streamlit padding a bit */
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+/* Tabs bar */
+.stTabs [data-baseweb="tab-list"] {
+    background-color: #4B5942;
+    border-radius: 999px;
+    padding: 4px;
+}
+
+/* Each tab */
+.stTabs [data-baseweb="tab"] {
+    color: #F5F7EE !important;
+    font-weight: 600 !important;
+}
+
+/* Active tab */
+.stTabs [aria-selected="true"] {
+    background-color: #8FA58C !important;
+    border-radius: 999px;
+}
+
+/* Dataframe tables */
+table {
+    background-color: #FFFFFF !important;
+    border-collapse: collapse !important;
+    border-radius: 6px;
+}
+
+thead tr th {
+    background-color: #F2F2F2 !important;
+    color: #4B5942 !important;
+    font-weight: 600 !important;
+}
+
+caption {
+    font-size: 0.8rem;
+    color: #555;
+}
+
+/* Small helper class */
+.caption-text {
+    font-size: 0.8rem;
+    color: #555;
+}
