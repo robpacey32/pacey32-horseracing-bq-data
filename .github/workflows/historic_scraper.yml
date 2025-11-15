@@ -2,8 +2,8 @@ name: 🏇 History - Scrape From Spine
 
 on:
   workflow_dispatch:  # Allow manual trigger from GitHub Actions tab
-  schedule:
-    - cron: "0 */2 * * *"   # every 2 hours, on the hour (UTC)
+#  schedule:
+#    - cron: "0 */2 * * *"   # every 2 hours, on the hour (UTC)
 
 jobs:
   scrape:
