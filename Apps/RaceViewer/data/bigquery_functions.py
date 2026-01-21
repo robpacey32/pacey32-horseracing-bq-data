@@ -1,32 +1,27 @@
+import os
+import json
 import pandas as pd
 from google.cloud import bigquery
+from google.oauth2 import service_account
 import streamlit as st
 
 PROJECT_ID = "horseracing-pacey32-github"
 DATASET = "horseracescrape"
+ANALYTICS_DATASET = "horseraceanalytics"
+RACE_TOTALS_VIEW = f"{PROJECT_ID}.{ANALYTICS_DATASET}.RaceTotalsForApp"
 
 
 # ---------------------------
 # Private BQ Client
 # ---------------------------
 def _get_bq_client():
-    import os
-    import json
-    from google.oauth2 import service_account
-    from google.cloud import bigquery
-
     # Load JSON string from Render environment variable
     json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
     if json_str is None:
         raise ValueError("Environment variable GOOGLE_APPLICATION_CREDENTIALS_JSON is missing.")
 
-    # Convert JSON string → dict
     info = json.loads(json_str)
-
-    # Create credentials object
     creds = service_account.Credentials.from_service_account_info(info)
-
-    # Return authenticated BigQuery client
     return bigquery.Client(credentials=creds, project=info["project_id"])
 
 
@@ -51,16 +46,11 @@ def get_races_for_date(date_value):
     job = client.query(
         query,
         job_config=bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("dt", "DATE", date_value)
-            ]
-        )
+            query_parameters=[bigquery.ScalarQueryParameter("dt", "DATE", date_value)]
+        ),
     )
 
     df = job.result().to_dataframe()
-
-    # We already produced proper DATE() via PARSE_DATE
-    # but enforce to python date for consistency:
     if "Pre_RaceDate" in df.columns:
         df["Pre_RaceDate"] = pd.to_datetime(df["Pre_RaceDate"]).dt.date
 
@@ -86,7 +76,6 @@ def get_single_race(pre_source_url):
             ) AS rn
         FROM `{PROJECT_ID}.{DATASET}.RaceSpine_Latest`
     )
-
     SELECT
         f.*,
         s.Status AS RaceStatus
@@ -100,64 +89,51 @@ def get_single_race(pre_source_url):
     job = client.query(
         query,
         job_config=bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("url", "STRING", pre_source_url)
-            ]
-        )
+            query_parameters=[bigquery.ScalarQueryParameter("url", "STRING", pre_source_url)]
+        ),
     )
 
     df = job.result().to_dataframe()
 
-    # Convert date properly
     if "Pre_RaceDate" in df.columns:
-        df["Pre_RaceDate"] = pd.to_datetime(
-            df["Pre_RaceDate"], dayfirst=True, errors="coerce"
-        ).dt.date
+        df["Pre_RaceDate"] = pd.to_datetime(df["Pre_RaceDate"], dayfirst=True, errors="coerce").dt.date
 
     return df
 
 
 # ---------------------------
-# 3. Totals aggregation (used in Totals tab)
+# 3. Totals aggregation (used in Totals expander)
 # ---------------------------
 def get_totals(df, entity):
     df = df.copy()
 
-    # win/place logic
-    def is_win(pos):
-        if pd.isna(pos): return False
-        s = str(pos).lower()
+    def _pos_to_int(pos):
+        if pd.isna(pos):
+            return None
+        s = str(pos).lower().strip()
         for suf in ["st", "nd", "rd", "th"]:
             if s.endswith(suf):
                 s = s[:-len(suf)]
-        return s.isdigit() and int(s) == 1
+        return int(s) if s.isdigit() else None
 
-    def is_place(pos):
-        if pd.isna(pos): return False
-        s = str(pos).lower()
-        for suf in ["st", "nd", "rd", "th"]:
-            if s.endswith(suf):
-                s = s[:-len(suf)]
-        return s.isdigit() and int(s) <= 3
-
-    df["Win"] = df["Pos"].apply(is_win)
-    df["Place"] = df["Pos"].apply(is_place)
+    df["PosInt"] = df["Pos"].apply(_pos_to_int)
+    df["Win"] = df["PosInt"].eq(1)
+    df["Place"] = df["PosInt"].le(3)  # (app totals only; your correct EW logic is in the BQ view)
 
     if "PrizeMoney" not in df.columns:
         df["PrizeMoney"] = 0
 
-    # Entity
     if entity == "Horses":
-        df["Entity"] = df["Post_HorseName"].fillna(df["HorseName"])
+        df["Entity"] = df.get("Post_HorseName", pd.Series([None] * len(df))).fillna(df.get("HorseName"))
     elif entity == "Jockeys":
-        df["Entity"] = df["Post_Jockey"].fillna(df["Jockey"])
+        df["Entity"] = df.get("Post_Jockey", pd.Series([None] * len(df))).fillna(df.get("Jockey"))
     else:
-        df["Entity"] = df["Post_Trainer"].fillna(df["Trainer"])
+        df["Entity"] = df.get("Post_Trainer", pd.Series([None] * len(df))).fillna(df.get("Trainer"))
 
     df = df.dropna(subset=["Entity"])
 
     summary = (
-        df.groupby("Entity")
+        df.groupby("Entity", dropna=True)
         .agg(
             Races=("Pre_SourceURL", "nunique"),
             Wins=("Win", "sum"),
@@ -171,3 +147,56 @@ def get_totals(df, entity):
     summary = summary.sort_values("TotalPrizeMoney", ascending=False)
 
     return summary
+
+
+# ---------------------------
+# 4. Last 12 months stats (for selected race entities) via RaceTotalsForApp view
+# ---------------------------
+@st.cache_data(show_spinner="Loading last 12 months stats...", ttl=3600)
+def get_last12m_entity_stats(names, as_of_date, entity_type):
+    """
+    names: list[str] - entities in the selected race
+    as_of_date: datetime.date (selected race date)
+    entity_type: 'HORSE' | 'JOCKEY' | 'TRAINER'
+    """
+    if not names:
+        return pd.DataFrame(columns=["Entity", "Races", "Wins", "Places", "PrizeMoneyTotal"])
+
+    client = _get_bq_client()
+
+    query = f"""
+    SELECT
+      Entity,
+      COUNT(*) AS Races,
+      SUM(CASE WHEN PosInt = 1 THEN 1 ELSE 0 END) AS Wins,
+      SUM(COALESCE(Placed, 0)) AS Places,
+      SUM(COALESCE(PrizeMoneyNumeric, 0)) AS PrizeMoneyTotal
+    FROM (
+      SELECT
+        CASE
+          WHEN @entity_type = 'HORSE' THEN HorseName
+          WHEN @entity_type = 'JOCKEY' THEN Jockey
+          WHEN @entity_type = 'TRAINER' THEN Trainer
+          ELSE NULL
+        END AS Entity,
+        PosInt,
+        Placed,
+        PrizeMoneyNumeric
+      FROM `{RACE_TOTALS_VIEW}`
+      WHERE RaceDate BETWEEN DATE_SUB(@as_of_date, INTERVAL 12 MONTH) AND @as_of_date
+    )
+    WHERE Entity IN UNNEST(@names)
+      AND Entity IS NOT NULL
+    GROUP BY Entity
+    ORDER BY PrizeMoneyTotal DESC, Wins DESC, Places DESC, Races DESC
+    """
+
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("as_of_date", "DATE", as_of_date),
+            bigquery.ScalarQueryParameter("entity_type", "STRING", entity_type),
+            bigquery.ArrayQueryParameter("names", "STRING", names),
+        ]
+    )
+
+    return client.query(query, job_config=job_config).result().to_dataframe()
