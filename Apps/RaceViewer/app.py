@@ -242,7 +242,7 @@ tab_pre, tab_res, tab_12m = st.tabs(["🐎 Pre Race", "🏁 Results", "📈 Last
 with tab_pre:
     # ---------------- Race info ----------------
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("Race info")
+    st.subheader("Race Info")
 
     info_cols = [
         "Pre_RaceClass",
@@ -256,13 +256,30 @@ with tab_pre:
     ]
     info_cols = [c for c in info_cols if c in df.columns]
 
-    info_df = blank_na(prettify_df(df[info_cols].drop_duplicates()))
+    info_raw = df[info_cols].copy()
+    info_raw = blank_na(info_raw)
+
+    # Keep the row with the most populated (non-blank) values
+    def _filled_count(row):
+        return sum(1 for v in row if str(v).strip() != "")
+
+    info_best = (
+        info_raw
+        .drop_duplicates()
+        .assign(_filled=info_raw.apply(_filled_count, axis=1))
+        .sort_values("_filled", ascending=False)
+        .head(1)
+        .drop(columns=["_filled"])
+    )
+
+    info_df = prettify_df(info_best)
     st.dataframe(info_df, use_container_width=True, hide_index=True)
+
     st.markdown("</div>", unsafe_allow_html=True)
 
     # ---------------- Declared runners ----------------
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("Declared runners")
+    st.subheader("Declared Runners")
 
     prerace_cols = [
         "HorseNumber",
@@ -344,11 +361,6 @@ with tab_pre:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # ---------------- Totals ----------------
-    with st.expander("Performance totals", expanded=False):
-        entity = st.radio("Entity", ["Horses", "Jockeys", "Trainers"], horizontal=True)
-        totals = blank_na(prettify_df(get_totals(df, entity)))
-        st.dataframe(totals, use_container_width=True, hide_index=True)
 
 # ============================================================
 # RESULTS TAB
