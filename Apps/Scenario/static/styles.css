@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Global background and font */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: #E8ECD9 !important;
+    font-family: "Georgia", "Times New Roman", serif !important;
+}
+
+/* Main title and headings */
+h1, h2, h3, h4 {
+    color: #4B5942 !important;
+    font-weight: 600 !important;
+}
+
+/* Remove default Streamlit padding a bit */
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+/* The tabs container */
+.stTabs [data-baseweb="tab-list"] {
+    display: flex !important;
+    width: 100% !important;
+}
+
+/* Each tab takes half */
+.stTabs [data-baseweb="tab"] {
+    flex: 1 1 50% !important;
+    text-align: center !important;
+}
+
+/* Active tab stays as your lighter green */
+.stTabs [aria-selected="true"] {
+    background-color: #8FA58C !important;
+    border-radius: 999px;
+}
+
+/* Dataframe tables */
+table {
+    background-color: #FFFFFF !important;
+    border-collapse: collapse !important;
+    border-radius: 6px;
+}
+
+thead tr th {
+    background-color: #F2F2F2 !important;
+    color: #4B5942 !important;
+    font-weight: 600 !important;
+}
+
+caption {
+    font-size: 0.8rem;
+    color: #555;
+}
+
+/* Small helper class */
+.caption-text {
+    font-size: 0.8rem;
+    color: #555;
+}
+
+/* =========================
+   Header typography (Inter)
+   ========================= */
+
+/* App title */
+h1 {
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em;
+}
+
+/* Section headers (Race info, Declared runners, etc.) */
+h2, h3 {
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+}
+
+
+/* Results table: full width, wrap comments, taller rows */
+table.results-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+}
+
+table.results-table th,
+table.results-table td {
+    padding: 12px 10px !important;   /* taller rows (increase to 16px if you want) */
+    vertical-align: top !important;
+}
+
+/* Comment column (8th) wraps nicely */
+table.results-table td:nth-child(8),
+table.results-table th:nth-child(8) {
+    white-space: normal !important;
+    word-break: break-word !important;
+}
+
+/* Optional: keep small columns tighter */
+table.results-table td:nth-child(1),
+table.results-table th:nth-child(1) { width: 60px; }   /* Pos */
+table.results-table td:nth-child(2),
+table.results-table th:nth-child(2) { width: 60px; }   /* Silk */
