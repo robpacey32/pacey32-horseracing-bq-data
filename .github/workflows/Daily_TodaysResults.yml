@@ -10,6 +10,11 @@ jobs:
 #    runs-on: ubuntu-latest
     runs-on: self-hosted
 
+    env:
+      # Required for setup-python on self-hosted macOS
+      RUNNER_TOOL_CACHE: ${{ runner.temp }}/_toolcache
+      AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/_toolcache
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
