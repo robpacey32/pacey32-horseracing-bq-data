@@ -8,6 +8,7 @@ webdriver-manager
 pandas
 
 # Google Cloud BigQuery
-google-cloud-bigquery
-pandas-gbq
-google-auth
+#google-cloud-bigquery
+#pandas-gbq
+#google-auth
+google-cloud-bigquery[bqstorage,pandas]
