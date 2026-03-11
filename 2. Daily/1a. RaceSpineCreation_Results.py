@@ -31,26 +31,31 @@ def get_race_urls(results_date, debug=False):
     base_url = f"https://www.sportinglife.com/racing/results/{results_date}"
 
     try:
-        response = requests.get(base_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        response = requests.get(
+            base_url,
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
         response.raise_for_status()
     except Exception as e:
         print(f"[get_race_urls] Error fetching {base_url}: {e}")
-        return pd.DataFrame(columns=["Date","Location","Time","prerace_URL","postrace_URL","Status"])
+        return pd.DataFrame(columns=["Date", "Location", "Time", "prerace_URL", "postrace_URL", "Status"])
 
     soup = BeautifulSoup(response.content, "html.parser")
-    meetings = soup.find_all("div", attrs={"data-testid":"meeting-summary"})
+    meetings = soup.find_all("div", attrs={"data-testid": "meeting-summary"})
+
     if debug:
-        print(f"[get_race_urls] Found {len(meetings)} meetings")
+        print(f"[get_race_urls] Found {len(meetings)} meetings for {results_date}")
 
     url_rows = []
 
     for meeting in meetings:
         # --- Location ---
-        course_elem = meeting.find("span", attrs={"data-test-id":"course-name"})
+        course_elem = meeting.find("span", attrs={"data-testid": "course-name"})
         location = course_elem.get_text(strip=True) if course_elem else "N/A"
 
         # --- Races in meeting ---
-        race_containers = meeting.find_all("div", attrs={"data-test-id":"race-container"})
+        race_containers = meeting.find_all("div", attrs={"data-testid": "race-container"})
         if debug:
             print(f"[get_race_urls] {location}: {len(race_containers)} races found")
 
@@ -67,6 +72,7 @@ def get_race_urls(results_date, debug=False):
                 a_tag = race.find("a", href=True)
                 if not a_tag:
                     continue
+
                 relative_url = a_tag["href"]
 
                 # Build both URLs
@@ -86,6 +92,7 @@ def get_race_urls(results_date, debug=False):
                         if len(parts) >= 6:
                             prerace_url = f"/racing/racecards/{parts[2]}/{parts[3]}/racecard/{parts[4]}/{parts[5]}"
                     prerace_url = "https://www.sportinglife.com" + prerace_url
+
                 else:
                     continue
 
@@ -94,9 +101,8 @@ def get_race_urls(results_date, debug=False):
                 abandoned_elem = race.find("div", class_=re.compile(r"AbandonedIcon|Abandoned"))
                 if abandoned_elem:
                     status = "Abandoned"
-                    postrace_url = ""  # No results for abandoned races
+                    postrace_url = ""
 
-                # Append row
                 url_rows.append({
                     "Date": results_date,
                     "Location": location,
@@ -111,7 +117,10 @@ def get_race_urls(results_date, debug=False):
                     print(f"[get_race_urls] Error parsing race: {e}")
                 continue
 
-    df = pd.DataFrame(url_rows, columns=["Date","Location","Time","prerace_URL","postrace_URL","Status"])
+    df = pd.DataFrame(
+        url_rows,
+        columns=["Date", "Location", "Time", "prerace_URL", "postrace_URL", "Status"]
+    )
 
     if debug:
         print(f"[get_race_urls] Extracted {len(df)} races for {results_date}")
@@ -122,12 +131,16 @@ def get_race_urls(results_date, debug=False):
 # ===============================================================
 # ☁️ FUNCTION: Write to BigQuery
 # ===============================================================
-def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="horseracescrape",
-                      table="RaceSpine", key_path="key.json"):
+def write_spine_to_bq(
+    df,
+    project_id="horseracing-pacey32-github",
+    dataset="horseracescrape",
+    table="RaceSpine",
+    key_path="key.json"
+):
     """Append the DataFrame to BigQuery."""
     if df.empty:
-        print("⚠️ No races found — skipping BigQuery upload.")
-        return
+        raise ValueError("No races found — scrape returned empty dataframe.")
 
     df["load_timestamp"] = datetime.utcnow()
     table_id = f"{project_id}.{dataset}.{table}"
@@ -151,6 +164,12 @@ def write_spine_to_bq(df, project_id="horseracing-pacey32-github", dataset="hors
 if __name__ == "__main__":
     today_str = datetime.today().strftime("%Y-%m-%d")
     print(f"Fetching races for {today_str}...")
+
     today_df = get_race_urls(today_str, debug=True)
+
+    if today_df.empty:
+        raise RuntimeError(f"Race spine scrape returned 0 rows for {today_str}")
+
     write_spine_to_bq(today_df)
+
     print(f"🏁 Process completed — {len(today_df)} races uploaded.")
