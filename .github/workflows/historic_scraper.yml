@@ -1,4 +1,4 @@
-name: 🏇 History - Scrape From Spine
+name: 🏇 History - 2. Scrape All Pending From Spine
 
 on:
   workflow_dispatch:  # Allow manual trigger from GitHub Actions tab
