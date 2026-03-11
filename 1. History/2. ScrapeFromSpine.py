@@ -51,7 +51,7 @@ def load_pending_races():
         LIMIT {MAX_RACES}
     """
 
-    df = client.query(query).to_dataframe()
+    df = client.query(query).to_dataframe(create_bqstorage_client=False)
 
     if df.empty:
         print("⚠️ No pending races found.")
