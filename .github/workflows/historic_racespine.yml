@@ -1,4 +1,4 @@
-name: 🏇 History - Pull Spine
+name: 🏇 History - Recreate All Spine Where Pending
 
 on:
   workflow_dispatch:   # ✅ Only runs when manually triggered
