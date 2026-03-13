@@ -44,4 +44,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ALERT_TYPE: ${{ env.ALERT_TYPE }}
-        run: python alerts/send_telegram_alerts.py
+        run: python Alerts/send_telegram_alerts.py
