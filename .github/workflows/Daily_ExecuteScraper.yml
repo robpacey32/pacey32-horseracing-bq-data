@@ -1,4 +1,4 @@
-name: 🕒 Scrape Races From Today (3am)
+name: 🕒 Scrape Races Daily
 
 on:
   schedule:
