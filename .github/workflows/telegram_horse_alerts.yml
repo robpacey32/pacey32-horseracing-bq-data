@@ -5,6 +5,15 @@ on:
     - cron: "0 7 * * *"
     - cron: "0 21 * * *"
   workflow_dispatch:
+    inputs:
+      alert_type:
+        description: "Which alert to send"
+        required: true
+        default: "morning"
+        type: choice
+        options:
+          - morning
+          - evening
 
 jobs:
   telegram-alert:
@@ -31,7 +40,9 @@ jobs:
 
       - name: Set alert type
         run: |
-          if [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ALERT_TYPE=${{ github.event.inputs.alert_type }}" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
             echo "ALERT_TYPE=morning" >> $GITHUB_ENV
           elif [ "${{ github.event.schedule }}" = "0 21 * * *" ]; then
             echo "ALERT_TYPE=evening" >> $GITHUB_ENV
