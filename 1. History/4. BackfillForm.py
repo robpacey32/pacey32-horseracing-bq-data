@@ -30,8 +30,8 @@ RACESPINE_TABLE = "RaceSpine"
 BACKFILL_TABLE = "Scrape_PreRace_FormBackfill"
 KEY_PATH = "key.json"
 
-MAX_RACES = int(os.getenv("MAX_RACES", "100"))
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "25"))
+MAX_RACES = int(os.getenv("MAX_RACES", "10000000"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "100"))
 SLEEP_SECONDS = float(os.getenv("SLEEP_SECONDS", "2.5"))
 
 # Optional lower date bound for testing, format YYYY-MM-DD
@@ -105,9 +105,6 @@ def load_urls_to_backfill():
     query = f"""
         WITH spine_urls AS (
           SELECT DISTINCT
-            CAST(Date AS STRING) AS Date,
-            CAST(Location AS STRING) AS Location,
-            CAST(Time AS STRING) AS Time,
             CAST(prerace_URL AS STRING) AS prerace_URL
           FROM `{PROJECT_ID}.{DATASET_ID}.{RACESPINE_TABLE}`
           WHERE prerace_URL IS NOT NULL
@@ -121,9 +118,6 @@ def load_urls_to_backfill():
           WHERE SourceURL IS NOT NULL
         )
         SELECT
-          s.Date,
-          s.Location,
-          s.Time,
           s.prerace_URL
         FROM spine_urls s
         LEFT JOIN already_done d
