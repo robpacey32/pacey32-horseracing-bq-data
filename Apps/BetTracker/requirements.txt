@@ -1,0 +1,6 @@
+streamlit>=1.42.0
+Authlib==1.3.2
+pandas
+pymongo
+google-cloud-bigquery
+google-auth
