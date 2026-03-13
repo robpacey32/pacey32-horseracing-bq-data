@@ -220,6 +220,13 @@ def scrape_prerace(driver, prerace_url, max_retries=3):
                         "a[href*='/horse/']"
                     ])
 
+                    form_text = first_text(parent, [
+                        "div[data-testid='show-form']",
+                        "div[data-test-id='show-form']"
+                    ], default="N/A")
+                    form_match = re.search(r'Form:\s*(.+)$', form_text, re.I)
+                    form = form_match.group(1).strip() if form_match else "N/A"
+
                     headgear = first_text(parent, [
                         "sup[data-testid='headgear']",
                         "sup[data-test-id='headgear']"
@@ -280,6 +287,7 @@ def scrape_prerace(driver, prerace_url, max_retries=3):
                             "HorseNumber": horse_number,
                             "StallNumber": stall_no,
                             "HorseName": horse_name,
+                            "Form": form,
                             "Headgear": headgear,
                             "LastRun": last_run,
                             "Commentary": commentary,
