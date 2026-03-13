@@ -26,14 +26,13 @@ def send_telegram_message(text: str):
     )
     response.raise_for_status()
 
-
 def build_morning_message():
     query = """
     SELECT
       RaceTime,
-      Course,
+      RaceLocation,
       HorseName,
-      odds_dec
+      Odds
     FROM `horseracing-pacey32-github.bettingalerts.2_SelectedHorses`
     ORDER BY RaceTime, Course, HorseName
     """
@@ -46,7 +45,7 @@ def build_morning_message():
 
     for row in rows:
         lines.append(
-            f"{row.RaceTime} {row.Course} - {row.HorseName} ({row.odds_dec})"
+            f"{row.RaceTime} {row.RaceLocation} - {row.HorseName} ({row.Odds})"
         )
 
     return "\n".join(lines)
@@ -56,7 +55,7 @@ def build_evening_message():
     query = """
     SELECT *
     FROM `horseracing-pacey32-github.bettingalerts.3_YesterdaysResults`
-    ORDER BY RaceTime, Course, HorseName
+    ORDER BY RaceLocation, RaceTime, HorseName
     """
     rows = run_query(query)
 
@@ -67,16 +66,13 @@ def build_evening_message():
 
     for row in rows:
         race_time = getattr(row, "RaceTime", "")
-        course = getattr(row, "Course", "")
+        course = getattr(row, "RaceLocation", "")
         horse = getattr(row, "HorseName", "")
         result = getattr(row, "Result", "")
-        returns = getattr(row, "ReturnAmount", None)
 
         line = f"{race_time} {course} - {horse}"
         if result:
             line += f" | {result}"
-        if returns is not None:
-            line += f" | Return: {returns}"
 
         lines.append(line)
 
