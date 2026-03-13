@@ -12,3 +12,6 @@ pandas
 #pandas-gbq
 #google-auth
 google-cloud-bigquery[bqstorage,pandas]
+
+pyarrow
+db-dtypes
