@@ -34,7 +34,7 @@ def build_morning_message():
       HorseName,
       Odds
     FROM `horseracing-pacey32-github.bettingalerts.2_SelectedHorses`
-    ORDER BY RaceTime, Course, HorseName
+    ORDER BY RaceTime, RaceLocation, HorseName
     """
     rows = run_query(query)
 
