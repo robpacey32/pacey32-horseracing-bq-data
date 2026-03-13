@@ -1,0 +1,47 @@
+name: Telegram Horse Alerts
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+jobs:
+  telegram-alert:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Authenticate to Google Cloud
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: |
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json" >> $GITHUB_ENV
+
+      - name: Set alert type
+        run: |
+          if [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
+            echo "ALERT_TYPE=morning" >> $GITHUB_ENV
+          elif [ "${{ github.event.schedule }}" = "0 21 * * *" ]; then
+            echo "ALERT_TYPE=evening" >> $GITHUB_ENV
+          else
+            echo "ALERT_TYPE=morning" >> $GITHUB_ENV
+          fi
+
+      - name: Send Telegram alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALERT_TYPE: ${{ env.ALERT_TYPE }}
+        run: python alerts/send_telegram_alerts.py
