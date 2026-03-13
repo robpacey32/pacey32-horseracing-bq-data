@@ -1,0 +1,32 @@
+name: 🏇 History - Form Backfill
+
+on:
+  # Allow manual execution
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # Install dependencies
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Create BigQuery credentials file
+      - name: Create BigQuery key file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
+      # Run
+      - name: Run Form Backfill
+        run: python "1. History/4. BackfillForm.py"
