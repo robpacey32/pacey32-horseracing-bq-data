@@ -123,7 +123,6 @@ def load_urls_to_backfill():
         LEFT JOIN already_done d
           ON s.prerace_URL = d.SourceURL
         WHERE d.SourceURL IS NULL
-        ORDER BY s.Date DESC, s.Location, s.Time
         LIMIT {MAX_RACES}
     """
 
