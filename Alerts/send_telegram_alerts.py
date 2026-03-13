@@ -30,7 +30,7 @@ def send_telegram_message(text: str):
 def build_morning_message():
     query = """
     SELECT
-      FORMAT_TIME('%H:%M', RaceTime) AS RaceTime,
+      RaceTime,
       Course,
       HorseName,
       odds_dec
