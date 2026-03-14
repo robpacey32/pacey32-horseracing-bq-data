@@ -1,17 +1,28 @@
 import os
 from datetime import datetime, timedelta, timezone
 
+from flask import Flask, request, abort
 from google.cloud import bigquery
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
+
+# -------------------------
+# CONFIG
+# -------------------------
 
 PROJECT_ID = "horseracing-pacey32-github"
 USERS_TABLE = f"{PROJECT_ID}.bettingalerts.TelegramUsers"
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+TELEGRAM_WEBHOOK_SECRET = os.environ["TELEGRAM_WEBHOOK_SECRET"]
 
+app = Flask(__name__)
+telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 bq_client = bigquery.Client(project=PROJECT_ID)
 
+# -------------------------
+# BIGQUERY HELPERS
+# -------------------------
 
 def get_user_record(user_id: str):
     query = f"""
@@ -117,6 +128,9 @@ def clear_snooze(user_id: str):
     )
     bq_client.query(query, job_config=job_config).result()
 
+# -------------------------
+# COMMANDS
+# -------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -125,8 +139,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     upsert_user_record(user_id, chat_id)
 
     await update.message.reply_text(
-        "You are subscribed to alerts.\n"
-        "Use /help to see available commands."
+        "You are subscribed to alerts.\nUse /help to see available commands."
     )
 
 
@@ -167,7 +180,6 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     set_alerts_enabled(user_id, False)
-
     await update.message.reply_text("Your alerts are paused.")
 
 
@@ -175,7 +187,6 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     set_alerts_enabled(user_id, True)
     clear_snooze(user_id)
-
     await update.message.reply_text("Your alerts are resumed.")
 
 
@@ -210,8 +221,7 @@ async def snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "Usage: /snooze 60\n"
-            "Example: /snooze 60 to snooze alerts for 60 minutes."
+            "Usage: /snooze 60\nExample: /snooze 60"
         )
         return
 
@@ -220,10 +230,7 @@ async def snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if minutes <= 0:
             raise ValueError
     except ValueError:
-        await update.message.reply_text(
-            "Please provide a positive whole number of minutes.\n"
-            "Example: /snooze 60"
-        )
+        await update.message.reply_text("Please provide a positive whole number of minutes.")
         return
 
     snoozed_until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
@@ -234,21 +241,44 @@ async def snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Snoozed until: {snoozed_until}"
     )
 
+# -------------------------
+# REGISTER COMMANDS
+# -------------------------
 
-def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("help", help_command))
+telegram_app.add_handler(CommandHandler("status", status))
+telegram_app.add_handler(CommandHandler("pause", pause))
+telegram_app.add_handler(CommandHandler("resume", resume))
+telegram_app.add_handler(CommandHandler("lastalert", lastalert_command))
+telegram_app.add_handler(CommandHandler("settings", settings))
+telegram_app.add_handler(CommandHandler("snooze", snooze))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("pause", pause))
-    app.add_handler(CommandHandler("resume", resume))
-    app.add_handler(CommandHandler("lastalert", lastalert_command))
-    app.add_handler(CommandHandler("settings", settings))
-    app.add_handler(CommandHandler("snooze", snooze))
+# -------------------------
+# HEALTHCHECK
+# -------------------------
 
-    app.run_polling()
+@app.get("/")
+def health():
+    return "Bot running", 200
 
+# -------------------------
+# TELEGRAM WEBHOOK
+# -------------------------
 
-if __name__ == "__main__":
-    main()
+@app.post("/webhook")
+async def webhook():
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if secret != TELEGRAM_WEBHOOK_SECRET:
+        abort(403)
+
+    data = request.get_json(silent=True)
+    if not data:
+        abort(400)
+
+    update = Update.de_json(data, telegram_app.bot)
+
+    await telegram_app.initialize()
+    await telegram_app.process_update(update)
+
+    return "ok", 200
