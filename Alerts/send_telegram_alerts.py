@@ -1,12 +1,50 @@
 import os
+import json
 import requests
+from pathlib import Path
+from datetime import datetime, timezone
 from google.cloud import bigquery
 
 PROJECT_ID = "horseracing-pacey32-github"
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 ALERT_TYPE = os.environ["ALERT_TYPE"]  # morning or evening
+
+STATE_FILE = Path(__file__).with_name("user_state.json")
+
+
+def load_state():
+    if not STATE_FILE.exists():
+        return {}
+
+    with open(STATE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_state(state):
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+
+
+def parse_snoozed_until(value):
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
+
+
+def user_should_receive_alert(record: dict) -> bool:
+    if not record.get("alerts_enabled", True):
+        return False
+
+    snoozed_until = record.get("snoozed_until")
+    if snoozed_until:
+        snoozed_dt = parse_snoozed_until(snoozed_until)
+        now = datetime.now(timezone.utc)
+
+        if snoozed_dt and now < snoozed_dt:
+            return False
+
+    return True
 
 
 def run_query(query: str):
@@ -14,17 +52,18 @@ def run_query(query: str):
     return list(client.query(query).result())
 
 
-def send_telegram_message(text: str):
+def send_telegram_message(chat_id: str, text: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     response = requests.post(
         url,
         data={
-            "chat_id": TELEGRAM_CHAT_ID,
+            "chat_id": chat_id,
             "text": text
         },
         timeout=30
     )
     response.raise_for_status()
+
 
 def build_morning_message():
     query = """
@@ -87,7 +126,20 @@ def main():
     else:
         raise ValueError("ALERT_TYPE must be 'morning' or 'evening'")
 
-    send_telegram_message(message)
+    state = load_state()
+
+    for user_id, record in state.items():
+        if not user_should_receive_alert(record):
+            continue
+
+        chat_id = record.get("chat_id")
+        if not chat_id:
+            continue
+
+        send_telegram_message(chat_id, message)
+        record["last_alert"] = message
+
+    save_state(state)
 
 
 if __name__ == "__main__":
