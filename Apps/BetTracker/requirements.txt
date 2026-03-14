@@ -5,3 +5,4 @@ pymongo
 google-cloud-bigquery
 google-auth
 db-dtypes
+plotly
