@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+Alerts/bot_state.json
 Alerts/user_state.json
