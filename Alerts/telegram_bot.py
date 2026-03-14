@@ -18,6 +18,7 @@ TELEGRAM_WEBHOOK_SECRET = os.environ["TELEGRAM_WEBHOOK_SECRET"]
 
 app = Flask(__name__)
 telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+telegram_app_initialized = False
 bq_client = bigquery.Client(project=PROJECT_ID)
 
 # -------------------------
@@ -268,6 +269,8 @@ def health():
 
 @app.post("/webhook")
 async def webhook():
+    global telegram_app_initialized
+
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     if secret != TELEGRAM_WEBHOOK_SECRET:
         abort(403)
@@ -276,9 +279,12 @@ async def webhook():
     if not data:
         abort(400)
 
-    update = Update.de_json(data, telegram_app.bot)
+    if not telegram_app_initialized:
+        await telegram_app.initialize()
+        await telegram_app.start()
+        telegram_app_initialized = True
 
-    await telegram_app.initialize()
+    update = Update.de_json(data, telegram_app.bot)
     await telegram_app.process_update(update)
 
     return "ok", 200
