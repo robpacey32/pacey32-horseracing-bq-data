@@ -1,4 +1,5 @@
 import os
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from flask import Flask, request, abort
@@ -17,8 +18,6 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_WEBHOOK_SECRET = os.environ["TELEGRAM_WEBHOOK_SECRET"]
 
 app = Flask(__name__)
-telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-telegram_app_initialized = False
 bq_client = bigquery.Client(project=PROJECT_ID)
 
 # -------------------------
@@ -129,6 +128,7 @@ def clear_snooze(user_id: str):
     )
     bq_client.query(query, job_config=job_config).result()
 
+
 # -------------------------
 # COMMANDS
 # -------------------------
@@ -161,21 +161,36 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     chat_id = str(update.effective_chat.id)
 
-    upsert_user_record(user_id, chat_id)
-    record = get_user_record(user_id)
+    try:
+        upsert_user_record(user_id, chat_id)
+        record = get_user_record(user_id)
 
-    if not record:
-        await update.message.reply_text("No user record found.")
-        return
+        if not record:
+            await update.message.reply_text("No user record found.")
+            return
 
-    if not record.alerts_enabled:
-        status_text = "paused"
-    elif record.snoozed_until and datetime.now(timezone.utc) < record.snoozed_until:
-        status_text = f"snoozed until {record.snoozed_until}"
-    else:
-        status_text = "active"
+        snoozed_until = record.snoozed_until
 
-    await update.message.reply_text(f"Your alerts are {status_text}.")
+        if not record.alerts_enabled:
+            status_text = "paused"
+        elif snoozed_until:
+            now_utc = datetime.now(timezone.utc)
+
+            if snoozed_until.tzinfo is None:
+                snoozed_until = snoozed_until.replace(tzinfo=timezone.utc)
+
+            if now_utc < snoozed_until:
+                status_text = f"snoozed until {snoozed_until}"
+            else:
+                status_text = "active"
+        else:
+            status_text = "active"
+
+        await update.message.reply_text(f"Your alerts are {status_text}.")
+
+    except Exception as e:
+        print(f"STATUS ERROR: {e}")
+        await update.message.reply_text("Status check failed.")
 
 
 async def pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,18 +257,38 @@ async def snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Snoozed until: {snoozed_until}"
     )
 
+
 # -------------------------
-# REGISTER COMMANDS
+# TELEGRAM APP FACTORY
 # -------------------------
 
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("help", help_command))
-telegram_app.add_handler(CommandHandler("status", status))
-telegram_app.add_handler(CommandHandler("pause", pause))
-telegram_app.add_handler(CommandHandler("resume", resume))
-telegram_app.add_handler(CommandHandler("lastalert", lastalert_command))
-telegram_app.add_handler(CommandHandler("settings", settings))
-telegram_app.add_handler(CommandHandler("snooze", snooze))
+def build_telegram_app():
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("pause", pause))
+    application.add_handler(CommandHandler("resume", resume))
+    application.add_handler(CommandHandler("lastalert", lastalert_command))
+    application.add_handler(CommandHandler("settings", settings))
+    application.add_handler(CommandHandler("snooze", snooze))
+
+    return application
+
+
+async def process_telegram_update(data: dict):
+    application = build_telegram_app()
+    await application.initialize()
+    await application.start()
+
+    try:
+        update = Update.de_json(data, application.bot)
+        await application.process_update(update)
+    finally:
+        await application.stop()
+        await application.shutdown()
+
 
 # -------------------------
 # HEALTHCHECK
@@ -263,14 +298,13 @@ telegram_app.add_handler(CommandHandler("snooze", snooze))
 def health():
     return "Bot running", 200
 
+
 # -------------------------
 # TELEGRAM WEBHOOK
 # -------------------------
 
 @app.post("/webhook")
-async def webhook():
-    global telegram_app_initialized
-
+def webhook():
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     if secret != TELEGRAM_WEBHOOK_SECRET:
         abort(403)
@@ -279,12 +313,6 @@ async def webhook():
     if not data:
         abort(400)
 
-    if not telegram_app_initialized:
-        await telegram_app.initialize()
-        await telegram_app.start()
-        telegram_app_initialized = True
-
-    update = Update.de_json(data, telegram_app.bot)
-    await telegram_app.process_update(update)
+    asyncio.run(process_telegram_update(data))
 
     return "ok", 200
