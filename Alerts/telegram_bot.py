@@ -24,6 +24,10 @@ bq_client = bigquery.Client(project=PROJECT_ID)
 # BIGQUERY HELPERS
 # -------------------------
 
+def run_query(query: str, job_config=None):
+    return list(bq_client.query(query, job_config=job_config).result())
+
+
 def get_user_record(user_id: str):
     query = f"""
     SELECT
@@ -43,7 +47,7 @@ def get_user_record(user_id: str):
             bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
         ]
     )
-    rows = list(bq_client.query(query, job_config=job_config).result())
+    rows = run_query(query, job_config)
     return rows[0] if rows else None
 
 
@@ -129,6 +133,55 @@ def clear_snooze(user_id: str):
     bq_client.query(query, job_config=job_config).result()
 
 
+def build_today_message():
+    query = """
+    SELECT
+      RaceTime,
+      RaceLocation,
+      HorseName,
+      Odds
+    FROM `horseracing-pacey32-github.bettingalerts.2_SelectedHorses`
+    ORDER BY RaceTime, RaceLocation, HorseName
+    """
+    rows = run_query(query)
+
+    if not rows:
+        return "🐎 Today's Picks\n\nNo selections today."
+
+    lines = ["🐎 Today's Picks", ""]
+    for row in rows:
+        lines.append(
+            f"{row.RaceTime} {row.RaceLocation} - {row.HorseName} ({row.Odds})"
+        )
+    return "\n".join(lines)
+
+
+def build_results_message():
+    query = """
+    SELECT *
+    FROM `horseracing-pacey32-github.bettingalerts.3_YesterdaysResults`
+    ORDER BY RaceLocation, RaceTime, HorseName
+    """
+    rows = run_query(query)
+
+    if not rows:
+        return "📊 Today's Results\n\nNo results found."
+
+    lines = ["📊 Today's Results", ""]
+    for row in rows:
+        race_time = getattr(row, "RaceTime", "")
+        course = getattr(row, "RaceLocation", "")
+        horse = getattr(row, "HorseName", "")
+        result = getattr(row, "Result", "")
+
+        line = f"{race_time} {course} - {horse}"
+        if result:
+            line += f" | {result}"
+
+        lines.append(line)
+
+    return "\n".join(lines)
+
 # -------------------------
 # COMMANDS
 # -------------------------
@@ -140,20 +193,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     upsert_user_record(user_id, chat_id)
 
     await update.message.reply_text(
-        "You are subscribed to alerts.\nUse /help to see available commands."
+        "You are subscribed to alerts.\n"
+        "Use /help to see available commands."
+    )
+
+
+async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    set_alerts_enabled(user_id, False)
+    clear_snooze(user_id)
+
+    await update.message.reply_text(
+        "You have unsubscribed from alerts.\n"
+        "Send /start to subscribe again."
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "/start - Subscribe to alerts\n"
+        "/stop - Unsubscribe from alerts\n"
         "/help - Show available commands\n"
         "/status - Show your alert status\n"
         "/pause - Pause your alerts\n"
         "/resume - Resume your alerts\n"
+        "/today - Show today's picks\n"
+        "/results - Show latest results\n"
         "/lastalert - Show the last alert sent to you\n"
         "/settings - Show your current settings\n"
-        "/snooze - Snooze alerts for a period, e.g. /snooze 60"
+        "/snooze 60 - Snooze alerts for 60 minutes"
     )
 
 
@@ -206,6 +274,14 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Your alerts are resumed.")
 
 
+async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(build_today_message())
+
+
+async def results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(build_results_message())
+
+
 async def lastalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     record = get_user_record(user_id)
@@ -236,9 +312,7 @@ async def snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
     if not context.args:
-        await update.message.reply_text(
-            "Usage: /snooze 60\nExample: /snooze 60"
-        )
+        await update.message.reply_text("Usage: /snooze 60")
         return
 
     try:
@@ -257,7 +331,6 @@ async def snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Snoozed until: {snoozed_until}"
     )
 
-
 # -------------------------
 # TELEGRAM APP FACTORY
 # -------------------------
@@ -266,10 +339,13 @@ def build_telegram_app():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stop", stop))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("pause", pause))
     application.add_handler(CommandHandler("resume", resume))
+    application.add_handler(CommandHandler("today", today))
+    application.add_handler(CommandHandler("results", results))
     application.add_handler(CommandHandler("lastalert", lastalert_command))
     application.add_handler(CommandHandler("settings", settings))
     application.add_handler(CommandHandler("snooze", snooze))
@@ -289,7 +365,6 @@ async def process_telegram_update(data: dict):
         await application.stop()
         await application.shutdown()
 
-
 # -------------------------
 # HEALTHCHECK
 # -------------------------
@@ -297,7 +372,6 @@ async def process_telegram_update(data: dict):
 @app.get("/")
 def health():
     return "Bot running", 200
-
 
 # -------------------------
 # TELEGRAM WEBHOOK

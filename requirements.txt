@@ -16,6 +16,6 @@ google-cloud-bigquery[bqstorage,pandas]
 pyarrow
 db-dtypes
 
-flask[async]
+flask
 gunicorn
 python-telegram-bot
