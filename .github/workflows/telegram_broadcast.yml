@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  send-broadcast:
+  telegram-broadcast:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -17,18 +17,20 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install requests pymongo google-cloud-bigquery google-auth
+        run: pip install -r requirements.txt
 
-      - name: Create GCP key file
+      - name: Authenticate to Google Cloud
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
         run: |
-          echo '${{ secrets.GCP_KEY_JSON }}' > key.json
+          echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/gcp-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json" >> $GITHUB_ENV
 
-      - name: Run broadcast script
+      - name: Run Telegram broadcast
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           MONGO_URI: ${{ secrets.MONGO_URI }}
           PROJECT_ID: ${{ secrets.PROJECT_ID }}
-          KEY_PATH: key.json
-        run: |
-          python Alerts/send_broadcast.py
+          MONGO_DB_NAME: betting_tracker
+          MONGO_COLLECTION_NAME: users
+        run: python Alerts/send_broadcast.py
