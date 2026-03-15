@@ -1,55 +1,17 @@
 import os
-import json
 import requests
-from pathlib import Path
-from datetime import datetime, timezone
 from google.cloud import bigquery
 
 PROJECT_ID = "horseracing-pacey32-github"
+USERS_TABLE = f"{PROJECT_ID}.bettingalerts.TelegramUsers"
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALERT_TYPE = os.environ["ALERT_TYPE"]  # morning or evening
 
-STATE_FILE = Path(__file__).with_name("user_state.json")
 
-
-def load_state():
-    if not STATE_FILE.exists():
-        return {}
-
-    with open(STATE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_state(state):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
-
-
-def parse_snoozed_until(value):
-    if not value:
-        return None
-    return datetime.fromisoformat(value)
-
-
-def user_should_receive_alert(record: dict) -> bool:
-    if not record.get("alerts_enabled", True):
-        return False
-
-    snoozed_until = record.get("snoozed_until")
-    if snoozed_until:
-        snoozed_dt = parse_snoozed_until(snoozed_until)
-        now = datetime.now(timezone.utc)
-
-        if snoozed_dt and now < snoozed_dt:
-            return False
-
-    return True
-
-
-def run_query(query: str):
+def run_query(query: str, job_config=None):
     client = bigquery.Client(project=PROJECT_ID)
-    return list(client.query(query).result())
+    return list(client.query(query, job_config=job_config).result())
 
 
 def send_telegram_message(chat_id: str, text: str):
@@ -63,6 +25,36 @@ def send_telegram_message(chat_id: str, text: str):
         timeout=30
     )
     response.raise_for_status()
+
+
+def get_active_users():
+    query = f"""
+    SELECT
+      user_id,
+      chat_id
+    FROM `{USERS_TABLE}`
+    WHERE alerts_enabled = TRUE
+      AND (snoozed_until IS NULL OR snoozed_until < CURRENT_TIMESTAMP())
+    """
+    return run_query(query)
+
+
+def update_last_alert(user_id: str, message: str):
+    client = bigquery.Client(project=PROJECT_ID)
+    query = f"""
+    UPDATE `{USERS_TABLE}`
+    SET
+      last_alert = @message,
+      updated_at = CURRENT_TIMESTAMP()
+    WHERE user_id = @user_id
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("message", "STRING", message),
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id),
+        ]
+    )
+    client.query(query, job_config=job_config).result()
 
 
 def build_morning_message():
@@ -81,12 +73,10 @@ def build_morning_message():
         return "🐎 Today's Picks\n\nNo selections today."
 
     lines = ["🐎 Today's Picks", ""]
-
     for row in rows:
         lines.append(
             f"{row.RaceTime} {row.RaceLocation} - {row.HorseName} ({row.Odds})"
         )
-
     return "\n".join(lines)
 
 
@@ -102,7 +92,6 @@ def build_evening_message():
         return "📊 Today's Results\n\nNo results found."
 
     lines = ["📊 Today's Results", ""]
-
     for row in rows:
         race_time = getattr(row, "RaceTime", "")
         course = getattr(row, "RaceLocation", "")
@@ -126,20 +115,14 @@ def main():
     else:
         raise ValueError("ALERT_TYPE must be 'morning' or 'evening'")
 
-    state = load_state()
+    users = get_active_users()
 
-    for user_id, record in state.items():
-        if not user_should_receive_alert(record):
-            continue
-
-        chat_id = record.get("chat_id")
-        if not chat_id:
-            continue
-
-        send_telegram_message(chat_id, message)
-        record["last_alert"] = message
-
-    save_state(state)
+    for user in users:
+        try:
+            send_telegram_message(user.chat_id, message)
+            update_last_alert(user.user_id, message)
+        except Exception as e:
+            print(f"Failed to send to user_id={user.user_id}, chat_id={user.chat_id}: {e}")
 
 
 if __name__ == "__main__":
