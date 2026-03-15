@@ -39,12 +39,13 @@ def get_active_users():
     return run_query(query)
 
 
-def update_last_alert(user_id: str, message: str):
+def update_last_alert_and_count(user_id: str, message: str):
     client = bigquery.Client(project=PROJECT_ID)
     query = f"""
     UPDATE `{USERS_TABLE}`
     SET
       last_alert = @message,
+      alert_count = COALESCE(alert_count, 0) + 1,
       updated_at = CURRENT_TIMESTAMP()
     WHERE user_id = @user_id
     """
@@ -73,10 +74,12 @@ def build_morning_message():
         return "🐎 Today's Picks\n\nNo selections today."
 
     lines = ["🐎 Today's Picks", ""]
+
     for row in rows:
         lines.append(
             f"{row.RaceTime} {row.RaceLocation} - {row.HorseName} ({row.Odds})"
         )
+
     return "\n".join(lines)
 
 
@@ -92,6 +95,7 @@ def build_evening_message():
         return "📊 Today's Results\n\nNo results found."
 
     lines = ["📊 Today's Results", ""]
+
     for row in rows:
         race_time = getattr(row, "RaceTime", "")
         course = getattr(row, "RaceLocation", "")
@@ -120,7 +124,8 @@ def main():
     for user in users:
         try:
             send_telegram_message(user.chat_id, message)
-            update_last_alert(user.user_id, message)
+            update_last_alert_and_count(user.user_id, message)
+            print(f"Sent {ALERT_TYPE} alert to user_id={user.user_id}")
         except Exception as e:
             print(f"Failed to send to user_id={user.user_id}, chat_id={user.chat_id}: {e}")
 
