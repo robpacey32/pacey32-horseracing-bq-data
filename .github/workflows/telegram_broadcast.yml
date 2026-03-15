@@ -1,4 +1,4 @@
-name: Manual Telegram Broadcast
+name: Telegram Broadcast
 
 on:
   workflow_dispatch:
@@ -29,8 +29,4 @@ jobs:
       - name: Run Telegram broadcast
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          MONGO_URI: ${{ secrets.MONGO_URI }}
-          PROJECT_ID: ${{ secrets.PROJECT_ID }}
-          MONGO_DB_NAME: betting_tracker
-          MONGO_COLLECTION_NAME: users
         run: python Alerts/send_broadcast.py
