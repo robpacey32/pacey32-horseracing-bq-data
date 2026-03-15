@@ -7,7 +7,7 @@ from google.cloud import bigquery
 # -------------------------
 PROJECT_ID = "horseracing-pacey32-github"
 BROADCAST_TABLE = "horseracing-pacey32-github.bettingalerts.telegram_broadcasts"
-USERS_TABLE = "horseracing-pacey32-github.bettingalerts.telegram_users"
+USERS_TABLE = "horseracing-pacey32-github.bettingalerts.TelegramUsers"
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
