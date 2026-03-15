@@ -3,7 +3,7 @@ name: Telegram Horse Alerts
 on:
   schedule:
     - cron: "0 7 * * *"
-    - cron: "0 21 * * *"
+    - cron: "0 22 * * *"
   workflow_dispatch:
     inputs:
       alert_type:
