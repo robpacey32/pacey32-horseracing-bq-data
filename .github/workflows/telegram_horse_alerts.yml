@@ -53,6 +53,5 @@ jobs:
       - name: Send Telegram alert
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ALERT_TYPE: ${{ env.ALERT_TYPE }}
         run: python Alerts/send_telegram_alerts.py
