@@ -1,0 +1,34 @@
+name: Manual Telegram Broadcast
+
+on:
+  workflow_dispatch:
+
+jobs:
+  send-broadcast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install requests pymongo google-cloud-bigquery google-auth
+
+      - name: Create GCP key file
+        run: |
+          echo '${{ secrets.GCP_KEY_JSON }}' > key.json
+
+      - name: Run broadcast script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          KEY_PATH: key.json
+        run: |
+          python Apps/BetTracker/send_broadcast.py
