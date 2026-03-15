@@ -31,4 +31,4 @@ jobs:
           PROJECT_ID: ${{ secrets.PROJECT_ID }}
           KEY_PATH: key.json
         run: |
-          python Apps/BetTracker/send_broadcast.py
+          python Alerts/send_broadcast.py
