@@ -44,7 +44,7 @@ jobs:
             echo "ALERT_TYPE=${{ github.event.inputs.alert_type }}" >> $GITHUB_ENV
           elif [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
             echo "ALERT_TYPE=morning" >> $GITHUB_ENV
-          elif [ "${{ github.event.schedule }}" = "0 21 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "0 22 * * *" ]; then
             echo "ALERT_TYPE=evening" >> $GITHUB_ENV
           else
             echo "ALERT_TYPE=morning" >> $GITHUB_ENV
