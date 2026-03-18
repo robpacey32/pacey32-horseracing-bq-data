@@ -75,7 +75,7 @@ def save_morning_selections():
     )
     SELECT
       CURRENT_DATE('Europe/London') AS AlertDate,
-      CURRENT_DATE('Europe/London') AS RaceDateDt,
+      CAST(RaceDateDt AS DATE) AS RaceDateDt,
       RaceTime,
       RaceLocation,
       HorseName,
@@ -141,6 +141,7 @@ def build_evening_message():
 
 def main():
     if ALERT_TYPE == "morning":
+        save_morning_selections()
         message = build_morning_message()
     elif ALERT_TYPE == "evening":
         message = build_evening_message()
