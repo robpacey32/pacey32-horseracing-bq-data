@@ -114,7 +114,7 @@ def build_morning_message():
 def build_evening_message():
     query = """
     SELECT *
-    FROM `horseracing-pacey32-github.bettingalerts.3_YesterdaysResults`
+    FROM `horseracing-pacey32-github.bettingalerts.4_YesterdaysResults`
     ORDER BY RaceLocation, RaceTime, HorseName
     """
     rows = run_query(query)
