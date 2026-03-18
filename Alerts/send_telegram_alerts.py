@@ -57,6 +57,34 @@ def update_last_alert_and_count(user_id: str, message: str):
     )
     client.query(query, job_config=job_config).result()
 
+def save_morning_selections():
+    client = bigquery.Client(project=PROJECT_ID)
+
+    query = """
+    DELETE FROM `horseracing-pacey32-github.bettingalerts.3_DailySelectionsSent`
+    WHERE AlertDate = CURRENT_DATE('Europe/London');
+
+    INSERT INTO `horseracing-pacey32-github.bettingalerts.3_DailySelectionsSent` (
+      AlertDate,
+      RaceDateDt,
+      RaceTime,
+      RaceLocation,
+      HorseName,
+      Odds,
+      SentAt
+    )
+    SELECT
+      CURRENT_DATE('Europe/London') AS AlertDate,
+      CURRENT_DATE('Europe/London') AS RaceDateDt,
+      RaceTime,
+      RaceLocation,
+      HorseName,
+      Odds,
+      CURRENT_TIMESTAMP() AS SentAt
+    FROM `horseracing-pacey32-github.bettingalerts.2_SelectedHorses`;
+    """
+    client.query(query).result()
+    
 
 def build_morning_message():
     query = """
