@@ -1,3 +1,8 @@
+import streamlit as st
+
+st.write(dict(st.secrets))
+st.stop()
+
 # -------------------------
 # IMPORTS
 # -------------------------
