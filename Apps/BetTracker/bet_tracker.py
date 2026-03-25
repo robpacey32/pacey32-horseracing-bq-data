@@ -1,10 +1,17 @@
 import streamlit as st
 
-try:
-    with open("/etc/secrets/secrets.toml", "r") as f:
-        st.code(f.read())
-except Exception as e:
-    st.write("Error reading secrets file:", e)
+paths = [
+    "/opt/render/.streamlit/secrets.toml",
+    "/opt/render/project/src/Apps/BetTracker/.streamlit/secrets.toml",
+]
+
+for p in paths:
+    try:
+        st.write(f"Trying: {p}")
+        with open(p, "r") as f:
+            st.code(f.read())
+    except Exception as e:
+        st.write(f"Failed: {p} -> {e}")
 
 st.stop()
 
