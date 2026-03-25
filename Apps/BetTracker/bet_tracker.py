@@ -1,6 +1,11 @@
 import streamlit as st
 
-st.write(dict(st.secrets))
+try:
+    with open("/etc/secrets/secrets.toml", "r") as f:
+        st.code(f.read())
+except Exception as e:
+    st.write("Error reading secrets file:", e)
+
 st.stop()
 
 # -------------------------
