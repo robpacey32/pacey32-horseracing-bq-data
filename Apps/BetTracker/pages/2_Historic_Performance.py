@@ -1,11 +1,5 @@
 from pathlib import Path
 import sys
-import os
-
-# Tell Streamlit where the secrets file is on Render
-if os.path.exists("/etc/secrets/secrets.toml"):
-    os.environ["STREAMLIT_SECRETS_FILE"] = "/etc/secrets/secrets.toml"
-
 
 import streamlit as st
 import pandas as pd
@@ -29,6 +23,7 @@ from shared.ui_auth import (
     get_current_user,
     logout,
 )
+from shared.config import get_config
 
 # -------------------------
 # PAGE CONFIG
@@ -38,9 +33,11 @@ st.set_page_config(page_title="Historic Performance", layout="wide")
 # -------------------------
 # CONFIG
 # -------------------------
-KEY_PATH = st.secrets["KEY_PATH"]
-PROJECT_ID = st.secrets["PROJECT_ID"]
-VIEW_ID = st.secrets.get(
+cfg = get_config()
+
+KEY_PATH = cfg["KEY_PATH"]
+PROJECT_ID = cfg["PROJECT_ID"]
+VIEW_ID = cfg.get(
     "BQ_HISTORIC_VIEW_ID",
     "horseracing-pacey32-github.bettingapp.3_BetSelections_Enriched",
 )

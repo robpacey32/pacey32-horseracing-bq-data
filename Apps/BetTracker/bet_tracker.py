@@ -3,12 +3,6 @@
 # -------------------------
 from pathlib import Path
 import sys
-import os
-
-# Tell Streamlit where the secrets file is on Render
-if os.path.exists("/etc/secrets/secrets.toml"):
-    os.environ["STREAMLIT_SECRETS_FILE"] = "/etc/secrets/secrets.toml"
-
 
 import streamlit as st
 import pandas as pd
@@ -34,6 +28,7 @@ from shared.ui_auth import (
     get_current_user,
     logout,
 )
+from shared.config import get_config
 
 # -------------------------
 # PAGE CONFIG
@@ -84,14 +79,16 @@ CURRENT_USER_NAME = user.get("username")
 # -------------------------
 # CONFIG
 # -------------------------
-MONGO_URI = st.secrets["MONGO_URI"]
-MONGO_DB_NAME = st.secrets.get("APP_MONGO_DB_NAME", "bettingapp")
-MONGO_COLLECTION_NAME = st.secrets.get("APP_MONGO_COLLECTION_NAME", "bet_selections")
+cfg = get_config()
 
-KEY_PATH = st.secrets["KEY_PATH"]
-PROJECT_ID = st.secrets["PROJECT_ID"]
-VIEW_ID = st.secrets["VIEW_ID"]
-BQ_SELECTION_TABLE = st.secrets.get(
+MONGO_URI = cfg["MONGO_URI"]
+MONGO_DB_NAME = cfg.get("APP_MONGO_DB_NAME", "bettingapp")
+MONGO_COLLECTION_NAME = cfg.get("APP_MONGO_COLLECTION_NAME", "bet_selections")
+
+KEY_PATH = cfg["KEY_PATH"]
+PROJECT_ID = cfg["PROJECT_ID"]
+VIEW_ID = cfg["VIEW_ID"]
+BQ_SELECTION_TABLE = cfg.get(
     "BQ_SELECTION_TABLE",
     "horseracing-pacey32-github.bettingapp.bet_selections",
 )
