@@ -244,12 +244,12 @@ hover_per_day = (
                   axis=1
               ).tolist()
           )
-      )
+      ,include_groups=False)
       .reset_index(name="hover_text")
 )
 
 chart_df = daily_summary.merge(hover_per_day, on="race_date", how="left")
-chart_df["race_date"] = pd.to_datetime(chart_df["race_date"])
+chart_df["race_date"] = pd.to_datetime(chart_df["race_date"]).dt.to_pydatetime()
 
 # -------------------------
 # LAYOUT
@@ -300,13 +300,13 @@ with left_col:
         tickangle=-35
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with right_col:
     st.markdown("### Totals")
     st.dataframe(
         totals_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -330,6 +330,6 @@ display_daily = daily_summary.copy().rename(
 
 st.dataframe(
     display_daily.sort_values("Race Date", ascending=False),
-    use_container_width=True,
+    width="stretch",
     hide_index=True
 )

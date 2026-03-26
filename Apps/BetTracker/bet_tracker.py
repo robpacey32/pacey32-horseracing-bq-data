@@ -1,20 +1,3 @@
-import streamlit as st
-
-paths = [
-    "/opt/render/.streamlit/secrets.toml",
-    "/opt/render/project/src/Apps/BetTracker/.streamlit/secrets.toml",
-]
-
-for p in paths:
-    try:
-        st.write(f"Trying: {p}")
-        with open(p, "r") as f:
-            st.code(f.read())
-    except Exception as e:
-        st.write(f"Failed: {p} -> {e}")
-
-st.stop()
-
 # -------------------------
 # IMPORTS
 # -------------------------
@@ -355,7 +338,7 @@ else:
 
     st.dataframe(
         my_selections_df[display_cols],
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
