@@ -6,3 +6,7 @@ google-cloud-bigquery
 google-auth
 db-dtypes
 plotly
+
+streamlit-local-storage
+bcrypt
+resend
