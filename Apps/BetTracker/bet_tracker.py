@@ -18,6 +18,9 @@ st.stop()
 # -------------------------
 # IMPORTS
 # -------------------------
+from pathlib import Path
+import sys
+
 import streamlit as st
 import pandas as pd
 from pymongo import MongoClient
@@ -26,52 +29,82 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 
 # -------------------------
+# REPO ROOT / IMPORT PATH
+# -------------------------
+CURRENT_FILE = Path(__file__).resolve()
+for parent in CURRENT_FILE.parents:
+    if (parent / "shared").exists():
+        if str(parent) not in sys.path:
+            sys.path.insert(0, str(parent))
+        break
+
+from shared.ui_auth import (
+    configure_ui_auth,
+    render_login_portal,
+    get_current_user,
+    logout,
+)
+
+# -------------------------
 # PAGE CONFIG
 # -------------------------
 st.set_page_config(page_title="Pacey32 Betting Tracker", layout="wide")
 
 # -------------------------
+# CSS / THEME
+# -------------------------
+def apply_bettracker_theme():
+    css_path = Path(__file__).with_name("styles.css")
+    if css_path.exists():
+        with open(css_path, "r") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+# -------------------------
+# SHARED AUTH CONFIG FOR THIS APP
+# -------------------------
+configure_ui_auth(
+    session_days=30,
+    session_storage_key="bettracker_session_token",
+    help_email="info@pacey32.com",
+    theme_callback=apply_bettracker_theme,
+)
+
+# -------------------------
 # ACCOUNT SIGN IN
 # -------------------------
-def login_screen():
-    st.title("Pacey32 Betting Tracker")
-    st.write("Please sign in to continue.")
-    if st.button("Log in with Google"):
-        st.login()
+user = get_current_user()
 
-if not st.user.is_logged_in:
-    login_screen()
+if not user:
+    render_login_portal(show_title=True)
     st.stop()
 
 with st.sidebar:
-    st.write(f"Signed in as: {st.user.get('email', 'Unknown user')}")
+    st.write(f"Signed in as: {user.get('email', 'Unknown user')}")
     if st.button("Log out"):
-        st.logout()
+        logout()
+        st.rerun()
 
 # -------------------------
 # CURRENT USER
 # -------------------------
-CURRENT_USER_ID = str(st.user["sub"])
-CURRENT_USER_EMAIL = st.user.get("email")
-CURRENT_USER_NAME = st.user.get("name")
+CURRENT_USER_ID = str(user["user_id"])
+CURRENT_USER_EMAIL = user.get("email")
+CURRENT_USER_NAME = user.get("username")
 
 # -------------------------
 # CONFIG
 # -------------------------
 MONGO_URI = st.secrets["MONGO_URI"]
+MONGO_DB_NAME = st.secrets.get("APP_MONGO_DB_NAME", "bettingapp")
+MONGO_COLLECTION_NAME = st.secrets.get("APP_MONGO_COLLECTION_NAME", "bet_selections")
+
 KEY_PATH = st.secrets["KEY_PATH"]
 PROJECT_ID = st.secrets["PROJECT_ID"]
 VIEW_ID = st.secrets["VIEW_ID"]
-BQ_SELECTION_TABLE = "horseracing-pacey32-github.bettingapp.bet_selections"
-
-# -------------------------
-# CSS
-# -------------------------
-def load_css(file_name="styles.css"):
-    with open(file_name, "r") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-load_css()
+BQ_SELECTION_TABLE = st.secrets.get(
+    "BQ_SELECTION_TABLE",
+    "horseracing-pacey32-github.bettingapp.bet_selections",
+)
 
 # -------------------------
 # CONNECTIONS
@@ -79,18 +112,20 @@ load_css()
 @st.cache_resource
 def get_mongo_collection():
     client = MongoClient(MONGO_URI)
-    db = client["bettingapp"]
-    collection = db["bet_selections"]
+    db = client[MONGO_DB_NAME]
+    collection = db[MONGO_COLLECTION_NAME]
 
     collection.create_index([("user_id", 1), ("race_date", 1)])
     collection.create_index([("user_id", 1), ("runner_id", 1)], unique=True)
 
     return collection
 
+
 @st.cache_resource
 def get_bigquery_client():
     credentials = service_account.Credentials.from_service_account_file(KEY_PATH)
     return bigquery.Client(credentials=credentials, project=PROJECT_ID)
+
 
 bet_collection = get_mongo_collection()
 bq_client = get_bigquery_client()
@@ -117,6 +152,7 @@ def load_runners(selected_date):
         create_bqstorage_client=False
     )
 
+
 @st.cache_data(ttl=10)
 def load_existing_selections_mongo(user_id):
     docs = list(
@@ -126,6 +162,7 @@ def load_existing_selections_mongo(user_id):
         )
     )
     return {str(doc["runner_id"]) for doc in docs if "runner_id" in doc}
+
 
 @st.cache_data(ttl=10)
 def load_my_selections_from_mongo(selected_date, user_id):
@@ -201,6 +238,7 @@ def insert_selection(row, user_id, user_email, user_name, stake=10.0):
     bet_collection.insert_one(mongo_doc)
 
     return True, "Saved"
+
 
 def remove_selection(runner_id, user_id):
     runner_id = str(runner_id)

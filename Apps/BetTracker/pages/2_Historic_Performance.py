@@ -1,3 +1,6 @@
+from pathlib import Path
+import sys
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -5,14 +8,21 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 
 # -------------------------
-# CONFIG
+# REPO ROOT / IMPORT PATH
 # -------------------------
-KEY_PATH = st.secrets["KEY_PATH"]
-PROJECT_ID = st.secrets["PROJECT_ID"]
-VIEW_ID = "horseracing-pacey32-github.bettingapp.3_BetSelections_Enriched"
+CURRENT_FILE = Path(__file__).resolve()
+for parent in CURRENT_FILE.parents:
+    if (parent / "shared").exists():
+        if str(parent) not in sys.path:
+            sys.path.insert(0, str(parent))
+        break
 
-GREEN_COLOUR = "#8FA58C"
-AMBER_COLOUR = "#D8B26E"
+from shared.ui_auth import (
+    configure_ui_auth,
+    render_login_portal,
+    get_current_user,
+    logout,
+)
 
 # -------------------------
 # PAGE CONFIG
@@ -20,13 +30,53 @@ AMBER_COLOUR = "#D8B26E"
 st.set_page_config(page_title="Historic Performance", layout="wide")
 
 # -------------------------
-# CSS
+# CONFIG
 # -------------------------
-def load_css(file_name="styles.css"):
-    with open(file_name, "r") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+KEY_PATH = st.secrets["KEY_PATH"]
+PROJECT_ID = st.secrets["PROJECT_ID"]
+VIEW_ID = st.secrets.get(
+    "BQ_HISTORIC_VIEW_ID",
+    "horseracing-pacey32-github.bettingapp.3_BetSelections_Enriched",
+)
 
-load_css()
+GREEN_COLOUR = "#8FA58C"
+AMBER_COLOUR = "#D8B26E"
+
+# -------------------------
+# CSS / THEME
+# -------------------------
+def apply_bettracker_theme():
+    css_path = Path(__file__).resolve().parents[1] / "styles.css"
+    if css_path.exists():
+        with open(css_path, "r") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+# -------------------------
+# SHARED AUTH CONFIG FOR THIS APP
+# -------------------------
+configure_ui_auth(
+    session_days=30,
+    session_storage_key="bettracker_session_token",
+    help_email="info@pacey32.com",
+    theme_callback=apply_bettracker_theme,
+)
+
+# -------------------------
+# ACCOUNT SIGN IN
+# -------------------------
+user = get_current_user()
+
+if not user:
+    render_login_portal(show_title=True)
+    st.stop()
+
+CURRENT_USER_ID = str(user["user_id"])
+
+with st.sidebar:
+    st.write(f"Signed in as: {user.get('email', 'Unknown user')}")
+    if st.button("Log out"):
+        logout()
+        st.rerun()
 
 # -------------------------
 # BIGQUERY
@@ -38,14 +88,25 @@ def get_bigquery_client():
 
 bq_client = get_bigquery_client()
 
+
 @st.cache_data(ttl=60)
-def load_bet_data():
+def load_bet_data(user_id: str):
     query = f"""
         SELECT *
         FROM `{VIEW_ID}`
+        WHERE user_id = @user_id
         ORDER BY race_date DESC, race_time
     """
-    df = bq_client.query(query).to_dataframe(create_bqstorage_client=False)
+
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("user_id", "STRING", user_id)
+        ]
+    )
+
+    df = bq_client.query(query, job_config=job_config).to_dataframe(
+        create_bqstorage_client=False
+    )
 
     if df.empty:
         return df
@@ -67,7 +128,6 @@ def load_bet_data():
         else:
             df[col] = 0.0
 
-    # Clean text columns used in hover text
     for col in ["race_time", "race_location", "horse_name"]:
         if col in df.columns:
             df[col] = df[col].fillna("").astype(str)
@@ -81,7 +141,7 @@ def load_bet_data():
 # -------------------------
 st.title("Historic Performance")
 
-df = load_bet_data()
+df = load_bet_data(CURRENT_USER_ID)
 
 if df.empty:
     st.warning("No performance data found.")
@@ -131,8 +191,6 @@ daily_summary = (
     .sort_values("race_date")
 )
 
-# Correct profit logic:
-# daily profit = daily return - daily total staked
 daily_summary["profit"] = daily_summary["selected_return"] - daily_summary["total_staked"]
 
 # -------------------------
