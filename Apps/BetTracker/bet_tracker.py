@@ -3,6 +3,12 @@
 # -------------------------
 from pathlib import Path
 import sys
+import os
+
+# Tell Streamlit where the secrets file is on Render
+if os.path.exists("/etc/secrets/secrets.toml"):
+    os.environ["STREAMLIT_SECRETS_FILE"] = "/etc/secrets/secrets.toml"
+
 
 import streamlit as st
 import pandas as pd
@@ -10,6 +16,7 @@ from pymongo import MongoClient
 from datetime import datetime, date
 from google.cloud import bigquery
 from google.oauth2 import service_account
+
 
 # -------------------------
 # REPO ROOT / IMPORT PATH
