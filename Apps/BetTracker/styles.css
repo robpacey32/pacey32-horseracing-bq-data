@@ -14,64 +14,118 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 
 /* -------------------------
-   Headings
+   Top header bar
 ------------------------- */
-h1, h2, h3, h4 {
-    color: #4B5942 !important;
-    font-weight: 600 !important;
+header[data-testid="stHeader"] {
+    background-color: #4B5942 !important;
 }
 
-h1 {
-    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
-    font-weight: 700 !important;
-    letter-spacing: -0.02em;
-}
-
-h2, h3 {
-    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
-    font-weight: 600 !important;
-    letter-spacing: -0.01em;
+header[data-testid="stHeader"] * {
+    color: #E8ECD9 !important;
 }
 
 /* -------------------------
-   General labels / helper text
+   Sidebar
+------------------------- */
+section[data-testid="stSidebar"] {
+    background-color: #4B5942 !important;
+}
+
+section[data-testid="stSidebar"] * {
+    color: #E8ECD9 !important;
+}
+
+/* Sidebar buttons */
+section[data-testid="stSidebar"] .stButton > button {
+    background-color: #8FA58C !important;
+    color: #1F2230 !important;
+    border: none !important;
+}
+
+/* -------------------------
+   Headings
+------------------------- */
+h1 {
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em;
+    color: #1F271E !important;
+}
+
+h2, h3, h4 {
+    color: #4B5942 !important;
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+}
+
+/* -------------------------
+   General labels / text
 ------------------------- */
 label, .stMarkdown, p, span, div {
     color: #4B5942;
 }
 
-/* Keep dataframe text untouched */
-[data-testid="stDataFrame"] * {
-    color: inherit !important;
-}
-
 /* -------------------------
-   Inputs
+   Inputs / Select / Date
 ------------------------- */
-[data-baseweb="input"] input,
-[data-baseweb="select"] input,
-[data-baseweb="base-input"] input {
-    color: #FFFFFF !important;
-}
-
 [data-baseweb="input"],
 [data-baseweb="select"],
 [data-baseweb="base-input"] {
-    background-color: #1F2230 !important;
+    background-color: #4B5942 !important;
     border-radius: 12px !important;
+    border: 1px solid #8FA58C !important;
+    box-shadow: none !important;
 }
 
-[data-baseweb="input"] *,
+[data-baseweb="select"] > div,
+[data-baseweb="base-input"] > div,
+[data-baseweb="input"] > div {
+    background-color: #4B5942 !important;
+    color: #E8ECD9 !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+}
+
+[data-baseweb="input"] input,
+[data-baseweb="select"] input,
+[data-baseweb="base-input"] input,
 [data-baseweb="select"] *,
-[data-baseweb="base-input"] * {
-    color: #FFFFFF !important;
+[data-baseweb="base-input"] *,
+[data-baseweb="input"] * {
+    color: #E8ECD9 !important;
 }
 
-/* Date input / number input text */
-.stDateInput input,
-.stNumberInput input,
-.stTextInput input {
-    color: #FFFFFF !important;
+/* Remove black focus outline */
+input:focus, textarea:focus, select:focus {
+    outline: none !important;
+    box-shadow: 0 0 0 2px #8FA58C !important;
+    border-color: #4B5942 !important;
+}
+
+/* Dropdown menu */
+ul[role="listbox"] {
+    background-color: #E8ECD9 !important;
+    color: #4B5942 !important;
+}
+
+ul[role="listbox"] li:hover {
+    background-color: #DDE5D0 !important;
+}
+
+/* -------------------------
+   Number input +/- buttons
+------------------------- */
+[data-testid="stNumberInput"] button {
+    background-color: #8FA58C !important;
+    color: #1F2230 !important;
+    border: 1px solid #4B5942 !important;
+    border-radius: 8px !important;
+}
+
+[data-testid="stNumberInput"] button:hover {
+    background-color: #4B5942 !important;
+    color: #E8ECD9 !important;
+    border: 1px solid #4B5942 !important;
 }
 
 /* -------------------------
@@ -89,16 +143,6 @@ thead tr th {
     font-weight: 600 !important;
 }
 
-caption {
-    font-size: 0.8rem;
-    color: #555;
-}
-
-.caption-text {
-    font-size: 0.8rem;
-    color: #555;
-}
-
 /* -------------------------
    Dataframe wrapper
 ------------------------- */
@@ -108,7 +152,7 @@ caption {
 }
 
 /* -------------------------
-   Location filter styled like tabs
+   Location filter pills
 ------------------------- */
 div[role="radiogroup"] {
     display: flex !important;
@@ -117,19 +161,10 @@ div[role="radiogroup"] {
     margin-bottom: 0.75rem !important;
 }
 
-/* Hide default radio circles/icons */
+/* Hide default radio */
 div[role="radiogroup"] input[type="radio"] {
     position: absolute !important;
     opacity: 0 !important;
-    pointer-events: none !important;
-}
-
-div[role="radiogroup"] svg {
-    display: none !important;
-}
-
-div[role="radiogroup"] [data-testid="stMarkdownContainer"] p {
-    margin: 0 !important;
 }
 
 /* Base pill */
@@ -142,73 +177,33 @@ div[role="radiogroup"] label {
     font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
     font-weight: 600 !important;
     cursor: pointer !important;
-    transition: all 0.2s ease !important;
-    min-height: auto !important;
-}
-
-/* Force text dark on unselected pills */
-div[role="radiogroup"] label *,
-div[role="radiogroup"] label span,
-div[role="radiogroup"] label div,
-div[role="radiogroup"] label p {
-    color: #4B5942 !important;
-    fill: #4B5942 !important;
 }
 
 /* Hover */
 div[role="radiogroup"] label:hover {
     background-color: #DDE5D0 !important;
-    border-color: #8FA58C !important;
 }
 
-/* Selected pill - whole pill changes colour */
-div[role="radiogroup"] label:has(input:checked) {
-    background-color: #8FA58C !important;
-    border-color: #6F866A !important;
-    box-shadow: none !important;
-}
-
-/* Selected pill text */
-div[role="radiogroup"] label:has(input:checked) *,
-div[role="radiogroup"] label:has(input:checked) span,
-div[role="radiogroup"] label:has(input:checked) div,
-div[role="radiogroup"] label:has(input:checked) p {
-    color: #4B5942 !important;
-    fill: #4B5942 !important;
-}
-
-/* Fallback for some Streamlit/BaseWeb versions */
+/* Selected pill */
+div[role="radiogroup"] label:has(input:checked),
 div[role="radiogroup"] label[data-checked="true"] {
-    background-color: #8FA58C !important;
-    border-color: #6F866A !important;
+    background-color: #4B5942 !important;
+    border-color: #4B5942 !important;
 }
 
-div[role="radiogroup"] label[data-checked="true"] *,
-div[role="radiogroup"] label[data-checked="true"] span,
-div[role="radiogroup"] label[data-checked="true"] div,
-div[role="radiogroup"] label[data-checked="true"] p {
-    color: #4B5942 !important;
-    fill: #4B5942 !important;
+div[role="radiogroup"] label:has(input:checked) *,
+div[role="radiogroup"] label[data-checked="true"] * {
+    color: #E8ECD9 !important;
 }
 
 /* -------------------------
-   Expanders for races
+   Expanders
 ------------------------- */
 [data-testid="stExpander"] {
     background-color: rgba(255, 255, 255, 0.45) !important;
     border: 1px solid #D5DCC9 !important;
     border-radius: 12px !important;
     margin-bottom: 0.75rem !important;
-}
-
-[data-testid="stExpander"] summary {
-    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
-    font-weight: 600 !important;
-    color: #4B5942 !important;
-}
-
-[data-testid="stExpander"] summary * {
-    color: #4B5942 !important;
 }
 
 /* -------------------------
@@ -224,38 +219,13 @@ div[role="radiogroup"] label[data-checked="true"] p {
 }
 
 .stButton > button:hover {
-    border-color: #6F866A !important;
-    color: #4B5942 !important;
+    border-color: #4B5942 !important;
     background-color: #F7F8F3 !important;
 }
 
-.stButton > button:disabled {
-    color: #7A8773 !important;
-    border-color: #B9C4B0 !important;
-    background-color: #F5F7F1 !important;
-}
-
-/* Change Streamlit radio indicator from red to black */
-div[role="radiogroup"] input[type="radio"]:checked + div::before {
-    background-color: #000000 !important;
-    border-color: #000000 !important;
-}
-
-/* Fallback for BaseWeb radio indicator */
-div[role="radiogroup"] svg circle {
-    fill: #000000 !important;
-}
-
-div[role="radiogroup"] svg path {
-    fill: #000000 !important;
-}
-
-/* Ensure any remaining radio accent colour becomes black */
-input[type="radio"]:checked {
-    accent-color: #000000 !important;
-}
-
-/* Plotly hover tooltip */
+/* -------------------------
+   Plotly hover tooltip
+------------------------- */
 .js-plotly-plot .hoverlayer .hovertext {
     font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
     font-size: 13px !important;
@@ -263,4 +233,90 @@ input[type="radio"]:checked {
 
 .js-plotly-plot .hoverlayer .hovertext text {
     fill: #4B5942 !important;
+}
+
+/* -------------------------
+   Primary buttons (e.g. Update password)
+------------------------- */
+.stButton > button {
+    border-radius: 10px !important;
+    border: 1px solid #4B5942 !important;
+    background-color: #4B5942 !important;
+    color: #E8ECD9 !important;
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+    padding: 0.6rem 1.2rem !important;
+}
+
+.stButton > button:hover {
+    background-color: #2F3A2E !important;
+    color: #E8ECD9 !important;
+    border: 1px solid #2F3A2E !important;
+}
+
+/* Secondary buttons */
+.stButton.secondary > button {
+    background-color: #FFFFFF !important;
+    color: #4B5942 !important;
+    border: 1px solid #8FA58C !important;
+}
+
+/* -------------------------
+   Buttons - match +/- style
+------------------------- */
+.stButton > button {
+    background-color: #8FA58C !important;
+    color: #1F271E !important;
+    border: 1px solid #4B5942 !important;
+    border-radius: 10px !important;
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+    padding: 0.6rem 1.2rem !important;
+}
+
+.stButton > button:hover {
+    background-color: #4B5942 !important;
+    color: #E8ECD9 !important;
+    border: 1px solid #4B5942 !important;
+}
+
+/* Make full width buttons look better */
+.stButton > button[kind="secondary"] {
+    background-color: #FFFFFF !important;
+    color: #4B5942 !important;
+    border: 1px solid #8FA58C !important;
+}
+
+/* -------------------------
+   Form submit buttons (Update password etc.)
+------------------------- */
+button[kind="primary"] {
+    background-color: #8FA58C !important;
+    color: #1F271E !important;
+    border: 1px solid #4B5942 !important;
+    border-radius: 10px !important;
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+    padding: 0.6rem 1.2rem !important;
+}
+
+button[kind="primary"]:hover {
+    background-color: #4B5942 !important;
+    color: #E8ECD9 !important;
+    border: 1px solid #4B5942 !important;
+}
+
+/* Normal buttons */
+.stButton > button {
+    background-color: #8FA58C !important;
+    color: #1F271E !important;
+    border: 1px solid #4B5942 !important;
+    border-radius: 10px !important;
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+    font-weight: 600 !important;
+}
+
+.stButton > button:hover {
+    background-color: #4B5942 !important;
+    color: #E8ECD9 !important;
 }

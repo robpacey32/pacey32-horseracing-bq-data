@@ -11,6 +11,14 @@ from datetime import datetime, date
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
+# -------------------------
+# PAGE CONFIG
+# -------------------------
+st.set_page_config(
+    page_title="Bet Tracker",
+    page_icon="🐎",
+    layout="wide"
+)
 
 # -------------------------
 # REPO ROOT / IMPORT PATH
@@ -22,6 +30,7 @@ for parent in CURRENT_FILE.parents:
             sys.path.insert(0, str(parent))
         break
 
+from shared.styles import load_app_css
 from shared.ui_auth import (
     configure_ui_auth,
     render_login_portal,
@@ -30,10 +39,13 @@ from shared.ui_auth import (
 )
 from shared.config import get_config
 
-# -------------------------
-# PAGE CONFIG
-# -------------------------
-st.set_page_config(page_title="Pacey32 Betting Tracker", layout="wide")
+load_app_css()
+
+#with st.sidebar:
+#    st.markdown(
+#        "<h2 style='margin-bottom:0.5rem;'>Bet Tracker</h2>",
+#        unsafe_allow_html=True
+#    )
 
 # -------------------------
 # CSS / THEME
@@ -51,7 +63,6 @@ configure_ui_auth(
     session_days=30,
     session_storage_key="bettracker_session_token",
     help_email="info@pacey32.com",
-    theme_callback=apply_bettracker_theme,
 )
 
 # -------------------------

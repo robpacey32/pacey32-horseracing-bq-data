@@ -6,6 +6,13 @@ import pandas as pd
 import plotly.graph_objects as go
 from google.cloud import bigquery
 from google.oauth2 import service_account
+import numpy as np
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="The behavior of DatetimeProperties.to_pydatetime is deprecated"
+)
 
 # -------------------------
 # REPO ROOT / IMPORT PATH
@@ -17,6 +24,7 @@ for parent in CURRENT_FILE.parents:
             sys.path.insert(0, str(parent))
         break
 
+from shared.styles import load_app_css
 from shared.ui_auth import (
     configure_ui_auth,
     render_login_portal,
@@ -24,6 +32,8 @@ from shared.ui_auth import (
     logout,
 )
 from shared.config import get_config
+
+load_app_css()
 
 # -------------------------
 # PAGE CONFIG
@@ -61,7 +71,6 @@ configure_ui_auth(
     session_days=30,
     session_storage_key="bettracker_session_token",
     help_email="info@pacey32.com",
-    theme_callback=apply_bettracker_theme,
 )
 
 # -------------------------
@@ -252,7 +261,7 @@ hover_per_day = (
 )
 
 chart_df = daily_summary.merge(hover_per_day, on="race_date", how="left")
-chart_df["race_date"] = pd.to_datetime(chart_df["race_date"]).dt.to_pydatetime()
+chart_df["race_date"] = pd.to_datetime(chart_df["race_date"])
 
 # -------------------------
 # LAYOUT
