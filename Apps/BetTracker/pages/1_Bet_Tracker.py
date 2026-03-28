@@ -3,6 +3,7 @@
 # -------------------------
 from pathlib import Path
 import sys
+import re
 
 import streamlit as st
 import pandas as pd
@@ -105,6 +106,53 @@ BQ_SELECTION_TABLE = cfg.get(
 )
 
 # -------------------------
+# ODDS HELPERS
+# -------------------------
+def normalise_odds_input(odds_value: str | None) -> str | None:
+    if odds_value is None:
+        return None
+
+    clean = str(odds_value).strip().lower()
+
+    if not clean:
+        return None
+
+    if clean in {"evs", "evens", "even"}:
+        return "evens"
+
+    if re.fullmatch(r"\d+\s*/\s*\d+", clean):
+        num, den = clean.split("/")
+        return f"{int(num.strip())}/{int(den.strip())}"
+
+    return None
+
+
+def fractional_to_decimal(odds_value: str | None) -> float | None:
+    normalised = normalise_odds_input(odds_value)
+
+    if normalised is None:
+        return None
+
+    if normalised == "evens":
+        return 2.0
+
+    num, den = normalised.split("/")
+    return round((float(num) / float(den)) + 1.0, 6)
+
+
+def validate_taken_odds(odds_value: str | None) -> tuple[bool, str | None, float | None]:
+    if odds_value is None or str(odds_value).strip() == "":
+        return True, None, None
+
+    normalised = normalise_odds_input(odds_value)
+
+    if normalised is None:
+        return False, None, None
+
+    odds_dec = fractional_to_decimal(normalised)
+    return True, normalised, odds_dec
+
+# -------------------------
 # CONNECTIONS
 # -------------------------
 @st.cache_resource
@@ -178,7 +226,15 @@ def load_my_selections_from_mongo(selected_date, user_id):
 # -------------------------
 # ACTIONS
 # -------------------------
-def insert_selection(row, user_id, user_email, user_name, stake=10.0):
+def insert_selection(
+    row,
+    user_id,
+    user_email,
+    user_name,
+    stake=10.0,
+    taken_odds=None,
+    taken_odds_dec=None
+):
     runner_id = str(row["runner_id"])
 
     existing = bet_collection.find_one({
@@ -229,6 +285,8 @@ def insert_selection(row, user_id, user_email, user_name, stake=10.0):
         "horse_name": str(row["HorseName"]),
         "form": str(form_value) if form_value is not None else None,
         "odds": str(odds_value) if odds_value is not None else None,
+        "taken_odds": taken_odds,
+        "taken_odds_dec": taken_odds_dec,
         "stake": float(stake),
         "created_at": created_at_utc
     }
@@ -347,6 +405,7 @@ else:
             "horse_name",
             "form",
             "odds",
+            "taken_odds",
             "stake"
         ] if c in my_selections_df.columns
     ]
@@ -381,7 +440,7 @@ else:
                 runner_id = str(row["runner_id"])
                 already_selected = runner_id in selected_runner_ids
 
-                col1, col2, col3, col4, col5 = st.columns([4, 2, 2, 2, 1])
+                col1, col2, col3, col4, col5, col6 = st.columns([4, 2, 2, 3, 2, 1])
 
                 with col1:
                     horse_name = str(row["HorseName"])
@@ -396,9 +455,17 @@ else:
                     st.write(odds_value)
 
                 with col4:
-                    st.write("Selected" if already_selected else "")
+                    taken_odds_input = st.text_input(
+                        "Taken odds",
+                        value="",
+                        key=f"taken_odds_{runner_id}",
+                        placeholder="e.g. 9/1"
+                    )
 
                 with col5:
+                    st.write("Selected" if already_selected else "")
+
+                with col6:
                     if already_selected:
                         if st.button("Unselect", key=f"unselect_{runner_id}"):
                             remove_selection(runner_id, user_id=user_id)
@@ -406,16 +473,23 @@ else:
                             st.rerun()
                     else:
                         if st.button("Select", key=f"select_{runner_id}"):
-                            ok, message = insert_selection(
-                                row=row,
-                                user_id=user_id,
-                                user_email=CURRENT_USER_EMAIL,
-                                user_name=CURRENT_USER_NAME,
-                                stake=default_stake
-                            )
-                            if ok:
-                                st.success(f"Saved selection: {row['HorseName']}")
+                            is_valid, taken_odds, taken_odds_dec = validate_taken_odds(taken_odds_input)
+
+                            if not is_valid:
+                                st.warning("Taken odds must be like 9/1, 10/3, or evens.")
                             else:
-                                st.warning(message)
-                            st.cache_data.clear()
-                            st.rerun()
+                                ok, message = insert_selection(
+                                    row=row,
+                                    user_id=user_id,
+                                    user_email=CURRENT_USER_EMAIL,
+                                    user_name=CURRENT_USER_NAME,
+                                    stake=default_stake,
+                                    taken_odds=taken_odds,
+                                    taken_odds_dec=taken_odds_dec
+                                )
+                                if ok:
+                                    st.success(f"Saved selection: {row['HorseName']}")
+                                else:
+                                    st.warning(message)
+                                st.cache_data.clear()
+                                st.rerun()

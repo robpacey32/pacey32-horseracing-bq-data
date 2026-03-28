@@ -1,18 +1,24 @@
 from pathlib import Path
 import sys
+import re
+import warnings
 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from pymongo import MongoClient
 from google.cloud import bigquery
 from google.oauth2 import service_account
-import numpy as np
-import warnings
 
 warnings.filterwarnings(
     "ignore",
     message="The behavior of DatetimeProperties.to_pydatetime is deprecated"
 )
+
+# -------------------------
+# PAGE CONFIG
+# -------------------------
+st.set_page_config(page_title="Historic Performance", layout="wide")
 
 # -------------------------
 # REPO ROOT / IMPORT PATH
@@ -36,11 +42,6 @@ from shared.config import get_config
 load_app_css()
 
 # -------------------------
-# PAGE CONFIG
-# -------------------------
-st.set_page_config(page_title="Historic Performance", layout="wide")
-
-# -------------------------
 # CONFIG
 # -------------------------
 cfg = get_config()
@@ -51,6 +52,10 @@ VIEW_ID = cfg.get(
     "BQ_HISTORIC_VIEW_ID",
     "horseracing-pacey32-github.bettingapp.3_BetSelections_Enriched",
 )
+
+MONGO_URI = cfg["MONGO_URI"]
+MONGO_DB_NAME = cfg.get("APP_MONGO_DB_NAME", "bettingapp")
+MONGO_COLLECTION_NAME = cfg.get("APP_MONGO_COLLECTION_NAME", "bet_selections")
 
 GREEN_COLOUR = "#8FA58C"
 AMBER_COLOUR = "#D8B26E"
@@ -91,6 +96,115 @@ with st.sidebar:
         st.rerun()
 
 # -------------------------
+# HELPERS
+# -------------------------
+def normalise_odds_input(odds_value):
+    if odds_value is None or pd.isna(odds_value):
+        return None
+
+    clean = str(odds_value).strip().lower()
+
+    if not clean:
+        return None
+
+    if clean in {"evs", "evens", "even"}:
+        return "evens"
+
+    if re.fullmatch(r"\d+\s*/\s*\d+", clean):
+        num, den = clean.split("/")
+        return f"{int(num.strip())}/{int(den.strip())}"
+
+    return None
+
+
+def fractional_to_decimal(odds_value):
+    normalised = normalise_odds_input(odds_value)
+
+    if normalised is None:
+        return None
+
+    if normalised == "evens":
+        return 2.0
+
+    num, den = normalised.split("/")
+    return (float(num) / float(den)) + 1.0
+
+
+def get_effective_odds_dec(row):
+    taken_odds_dec = row.get("taken_odds_dec")
+    if pd.notna(taken_odds_dec):
+        try:
+            return float(taken_odds_dec)
+        except Exception:
+            pass
+
+    taken_odds = row.get("taken_odds")
+    if pd.notna(taken_odds):
+        taken_dec = fractional_to_decimal(taken_odds)
+        if taken_dec is not None:
+            return taken_dec
+
+    source_odds = row.get("odds")
+    if pd.notna(source_odds):
+        source_dec = fractional_to_decimal(source_odds)
+        if source_dec is not None:
+            return source_dec
+
+    return None
+
+
+def calc_taken_win_return(row):
+    odds_dec = get_effective_odds_dec(row)
+    stake = float(row.get("stake", 0) or 0)
+    result_pos = pd.to_numeric(row.get("Result_Position"), errors="coerce")
+
+    if odds_dec is None or pd.isna(result_pos):
+        return 0.0
+
+    return stake * odds_dec if result_pos == 1 else 0.0
+
+
+def infer_place_terms_from_source(row):
+    source_odds_dec = fractional_to_decimal(row.get("odds"))
+    place_returns_multiple = pd.to_numeric(row.get("Place_Returns"), errors="coerce")
+
+    if source_odds_dec is None or source_odds_dec <= 1:
+        return None
+
+    if pd.isna(place_returns_multiple) or place_returns_multiple <= 0:
+        return None
+
+    # source Place_Returns is the unit-stake place return multiple:
+    # 1 + ((source_odds_dec - 1) * place_terms)
+    return max((place_returns_multiple - 1.0) / (source_odds_dec - 1.0), 0.0)
+
+
+def calc_taken_place_return(row):
+    if ew_selector != "Y":
+        return 0.0
+
+    odds_dec = get_effective_odds_dec(row)
+    stake = float(row.get("stake", 0) or 0)
+    place_returns_multiple = pd.to_numeric(row.get("Place_Returns"), errors="coerce")
+
+    # if the source logic says there was no place return, keep it as 0
+    if odds_dec is None or pd.isna(place_returns_multiple) or place_returns_multiple <= 0:
+        return 0.0
+
+    place_terms = infer_place_terms_from_source(row)
+    if place_terms is None:
+        return 0.0
+
+    adjusted_place_multiple = 1.0 + ((odds_dec - 1.0) * place_terms)
+    return stake * adjusted_place_multiple
+
+
+def calc_taken_total_return(row):
+    if ew_selector == "Y":
+        return calc_taken_win_return(row) + calc_taken_place_return(row)
+    return calc_taken_win_return(row)
+
+# -------------------------
 # BIGQUERY
 # -------------------------
 @st.cache_resource
@@ -100,7 +214,20 @@ def get_bigquery_client():
 
 bq_client = get_bigquery_client()
 
+# -------------------------
+# MONGODB
+# -------------------------
+@st.cache_resource
+def get_mongo_collection():
+    client = MongoClient(MONGO_URI)
+    db = client[MONGO_DB_NAME]
+    return db[MONGO_COLLECTION_NAME]
 
+mongo_collection = get_mongo_collection()
+
+# -------------------------
+# DATA LOADERS
+# -------------------------
 @st.cache_data(ttl=60)
 def load_bet_data(user_id: str):
     query = f"""
@@ -131,21 +258,58 @@ def load_bet_data(user_id: str):
         "Actual_Win_Return",
         "Actual_Place_Return",
         "Actual_Total_Return",
-        "Place_Returns"
+        "Place_Returns",
+        "Result_Position",
     ]
 
     for col in numeric_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+            df[col] = pd.to_numeric(df[col], errors="coerce")
         else:
             df[col] = 0.0
 
-    for col in ["race_time", "race_location", "horse_name"]:
+    fill_zero_cols = [
+        "stake",
+        "Actual_Win_Return",
+        "Actual_Place_Return",
+        "Actual_Total_Return",
+        "Place_Returns",
+    ]
+
+    for col in fill_zero_cols:
+        df[col] = df[col].fillna(0.0)
+
+    for col in ["race_time", "race_location", "horse_name", "odds"]:
         if col in df.columns:
             df[col] = df[col].fillna("").astype(str)
         else:
             df[col] = ""
 
+    if "runner_id" in df.columns:
+        df["runner_id"] = df["runner_id"].astype(str)
+
+    return df
+
+
+@st.cache_data(ttl=60)
+def load_taken_odds_map(user_id: str):
+    docs = list(
+        mongo_collection.find(
+            {"user_id": user_id},
+            {
+                "_id": 0,
+                "runner_id": 1,
+                "taken_odds": 1,
+                "taken_odds_dec": 1,
+            }
+        )
+    )
+
+    if not docs:
+        return pd.DataFrame(columns=["runner_id", "taken_odds", "taken_odds_dec"])
+
+    df = pd.DataFrame(docs)
+    df["runner_id"] = df["runner_id"].astype(str)
     return df
 
 # -------------------------
@@ -159,6 +323,14 @@ if df.empty:
     st.warning("No performance data found.")
     st.stop()
 
+taken_odds_df = load_taken_odds_map(CURRENT_USER_ID)
+
+if not taken_odds_df.empty:
+    df = df.merge(taken_odds_df, on="runner_id", how="left")
+else:
+    df["taken_odds"] = None
+    df["taken_odds_dec"] = None
+
 # -------------------------
 # FILTERS
 # -------------------------
@@ -171,7 +343,7 @@ metric_options = [
     "# Wins & Places",
 ]
 
-col1, col2 = st.columns([2, 1])
+col1, col2, col3 = st.columns([2, 1, 1])
 
 with col1:
     selected_metric_label = st.selectbox("Metric", metric_options)
@@ -179,13 +351,22 @@ with col1:
 with col2:
     ew_selector = st.selectbox("Each Way", ["N", "Y"])
 
+with col3:
+    odds_basis = st.selectbox("Odds Used", ["Data odds", "Taken odds"])
+
 # -------------------------
 # RETURN LOGIC
 # -------------------------
-if ew_selector == "Y":
-    df["selected_return_row"] = df["Actual_Total_Return"]
+if odds_basis == "Data odds":
+    if ew_selector == "Y":
+        df["selected_return_row"] = df["Actual_Total_Return"]
+    else:
+        df["selected_return_row"] = df["Actual_Win_Return"]
 else:
-    df["selected_return_row"] = df["Actual_Win_Return"]
+    if ew_selector == "Y":
+        df["selected_return_row"] = df.apply(calc_taken_total_return, axis=1)
+    else:
+        df["selected_return_row"] = df.apply(calc_taken_win_return, axis=1)
 
 # -------------------------
 # DAILY SUMMARY
@@ -255,8 +436,9 @@ hover_per_day = (
                   lambda r: f"{r['race_time']} | {r['race_location']} | {r['horse_name']}",
                   axis=1
               ).tolist()
-          )
-      ,include_groups=False)
+          ),
+          include_groups=False
+      )
       .reset_index(name="hover_text")
 )
 
