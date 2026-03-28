@@ -10,14 +10,57 @@ ANALYTICS_DATASET = "horseraceanalytics"
 
 SCENARIO_BASE_VIEW = "horseracing-pacey32-github.horseraceanalytics.Scenario_1_DataPrep_vw"
 
-def _get_bq_client():
-    json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-    if json_str is None:
-        raise ValueError("Environment variable GOOGLE_APPLICATION_CREDENTIALS_JSON is missing.")
 
-    info = json.loads(json_str)
-    creds = service_account.Credentials.from_service_account_info(info)
-    return bigquery.Client(credentials=creds, project=info["project_id"])
+def _get_bq_client():
+    # Option 1: full JSON stored in env var
+    json_str = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    if json_str:
+        try:
+            info = json.loads(json_str)
+            credentials = service_account.Credentials.from_service_account_info(info)
+            return bigquery.Client(
+                project=info.get("project_id", PROJECT_ID),
+                credentials=credentials
+            )
+        except json.JSONDecodeError:
+            raise ValueError(
+                "GOOGLE_APPLICATION_CREDENTIALS_JSON is set, but it does not contain valid JSON. "
+                "If you are supplying a file path, use GOOGLE_APPLICATION_CREDENTIALS instead."
+            )
+
+    # Option 2: local file path stored in env var
+    key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if key_path:
+        if not os.path.exists(key_path):
+            raise ValueError(
+                f"GOOGLE_APPLICATION_CREDENTIALS points to a file that does not exist: {key_path}"
+            )
+
+        credentials = service_account.Credentials.from_service_account_file(key_path)
+        return bigquery.Client(
+            project=credentials.project_id or PROJECT_ID,
+            credentials=credentials
+        )
+
+    # Option 3: Streamlit secrets
+    if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in st.secrets:
+        try:
+            info = json.loads(st.secrets["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+            credentials = service_account.Credentials.from_service_account_info(info)
+            return bigquery.Client(
+                project=info.get("project_id", PROJECT_ID),
+                credentials=credentials
+            )
+        except json.JSONDecodeError:
+            raise ValueError(
+                "GOOGLE_APPLICATION_CREDENTIALS_JSON in st.secrets is not valid JSON."
+            )
+
+    raise ValueError(
+        "No BigQuery credentials found. "
+        "Set GOOGLE_APPLICATION_CREDENTIALS to your local key file path, "
+        "or GOOGLE_APPLICATION_CREDENTIALS_JSON to the full JSON content."
+    )
 
 
 @st.cache_data(show_spinner="Loading scenario dataset...", ttl=3600)
@@ -34,19 +77,19 @@ def get_scenario_base(date_from, date_to):
 
     query = f"""
     SELECT
-    DATE(RaceDateTime) AS RaceDate,
-    RaceDateTime,
-    RaceDateDt,
-    Pre_RaceLocation AS RaceLocation,
-    Pre_RaceTime AS RaceTime,
-    HorseName,
-    Odds,
-    Odds_dec,
-    Result_Position,
-    Post_RaceRunners,
-    HandicappedRace,
-    RaceHistoryStats,
-    Favourite
+        DATE(RaceDateTime) AS RaceDate,
+        RaceDateTime,
+        RaceDateDt,
+        Pre_RaceLocation AS RaceLocation,
+        Pre_RaceTime AS RaceTime,
+        HorseName,
+        Odds,
+        Odds_dec,
+        Result_Position,
+        Post_RaceRunners,
+        HandicappedRace,
+        RaceHistoryStats,
+        Favourite
     FROM `{SCENARIO_BASE_VIEW}`
     WHERE DATE(RaceDateTime) BETWEEN @d1 AND @d2
     """
@@ -62,7 +105,6 @@ def get_scenario_base(date_from, date_to):
     )
     df = job.result().to_dataframe()
 
-    # Normalise types
     if "RaceDateTime" in df.columns:
         df["RaceDateTime"] = pd.to_datetime(df["RaceDateTime"], errors="coerce")
 
