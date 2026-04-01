@@ -48,12 +48,17 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "ALERT_TYPE=${{ github.event.inputs.alert_type }}" >> $GITHUB_ENV
-          elif [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
-            echo "ALERT_TYPE=morning" >> $GITHUB_ENV
-          elif [ "${{ github.event.schedule }}" = "0 22 * * *" ]; then
-            echo "ALERT_TYPE=evening" >> $GITHUB_ENV
           else
-            echo "ALERT_TYPE=morning" >> $GITHUB_ENV
+            HOUR=$(date -u +'%H')
+      
+            if [ "$HOUR" = "06" ] || [ "$HOUR" = "07" ]; then
+              echo "ALERT_TYPE=morning" >> $GITHUB_ENV
+            elif [ "$HOUR" = "21" ] || [ "$HOUR" = "22" ]; then
+              echo "ALERT_TYPE=evening" >> $GITHUB_ENV
+            else
+              echo "No alert scheduled for this time"
+              exit 0
+            fi
           fi
 
       - name: Send Telegram alert
