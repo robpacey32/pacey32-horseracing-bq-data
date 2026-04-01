@@ -2,8 +2,14 @@ name: 🕒 Scrape Races Daily
 
 on:
   schedule:
-    - cron: "0 3 * * *"   # 03:00 UTC (morning prerace scrape)
-    - cron: "30 21 * * *"  # 21:30 UTC (evening postrace scrape)
+    # Morning scrape (03:00 UK)
+    - cron: "0 2 * * *"
+    - cron: "0 3 * * *"
+
+    # Evening scrape (21:30 UK)
+    - cron: "30 20 * * *"
+    - cron: "30 21 * * *"
+
   workflow_dispatch:
 
 jobs:
@@ -13,6 +19,24 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Set scrape type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "SCRAPE_TYPE=manual" >> $GITHUB_ENV
+          else
+            HOUR=$(date -u +'%H')
+            MINUTE=$(date -u +'%M')
+
+            if [ "$MINUTE" = "00" ] && { [ "$HOUR" = "02" ] || [ "$HOUR" = "03" ]; }; then
+              echo "SCRAPE_TYPE=morning" >> $GITHUB_ENV
+            elif [ "$MINUTE" = "30" ] && { [ "$HOUR" = "20" ] || [ "$HOUR" = "21" ]; }; then
+              echo "SCRAPE_TYPE=evening" >> $GITHUB_ENV
+            else
+              echo "No scrape scheduled for this time"
+              exit 0
+            fi
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v6
