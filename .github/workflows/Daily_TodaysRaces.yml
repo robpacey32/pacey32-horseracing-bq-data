@@ -2,8 +2,10 @@ name: 🕒 Create Race Spine (Prerace @ 2am)
 
 on:
   schedule:
-    - cron: "0 2 * * *"   # 02:00 UTC
-  workflow_dispatch:       # allow manual run
+    # 02:00 UK time
+    - cron: "0 1 * * *"
+    - cron: "0 2 * * *"
+  workflow_dispatch:
 
 jobs:
   spine-races:
@@ -26,6 +28,21 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
+      - name: Set run type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "RUN_TYPE=manual" >> $GITHUB_ENV
+          else
+            HOUR=$(date -u +'%H')
+            if [ "$HOUR" = "01" ] || [ "$HOUR" = "02" ]; then
+              echo "RUN_TYPE=prerace" >> $GITHUB_ENV
+            else
+              echo "No run scheduled for this time"
+              exit 0
+            fi
+          fi
+
       - name: Run RaceSpineCreation_Races.py
+        env:
+          RUN_TYPE: ${{ env.RUN_TYPE }}
         run: python "2. Daily/1b. RaceSpineCreation_Races.py"
-        
