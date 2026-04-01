@@ -11,13 +11,30 @@
 # ------------------------------
 # 📦 Imports
 # ------------------------------
+import os
+import sys
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from google.cloud import bigquery
 from google.oauth2 import service_account
+
+RUN_TYPE = os.getenv("RUN_TYPE", "manual")
+
+
+def is_correct_uk_time(run_type: str) -> bool:
+    now_uk = datetime.now(ZoneInfo("Europe/London"))
+
+    if run_type == "postrace":
+        return now_uk.hour == 21 and now_uk.minute == 0
+
+    if run_type == "manual":
+        return True
+
+    raise ValueError("RUN_TYPE must be 'postrace' or 'manual'")
 
 
 # ===============================================================
@@ -162,6 +179,16 @@ def write_spine_to_bq(
 # 🚀 MAIN EXECUTION
 # ===============================================================
 if __name__ == "__main__":
+    now_uk = datetime.now(ZoneInfo("Europe/London"))
+    print(
+        f"Starting results race spine update. RUN_TYPE={RUN_TYPE}, "
+        f"UK time={now_uk.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+    )
+
+    if not is_correct_uk_time(RUN_TYPE):
+        print("Skipping run because this is not the correct UK local time.")
+        sys.exit(0)
+
     today_str = datetime.today().strftime("%Y-%m-%d")
     print(f"Fetching races for {today_str}...")
 
