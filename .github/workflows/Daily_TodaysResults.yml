@@ -2,18 +2,14 @@ name: 🕒 Update Race Spine (Postrace @ 9pm)
 
 on:
   schedule:
-    - cron: "0 21 * * *"  # 21:00 UTC
+    # 21:00 UK time
+    - cron: "0 20 * * *"
+    - cron: "0 21 * * *"
   workflow_dispatch:
 
 jobs:
   spine-results:
     runs-on: ubuntu-latest
-#    runs-on: self-hosted
-
-#    env:
-      # Required for setup-python on self-hosted macOS
-#      RUNNER_TOOL_CACHE: ${{ runner.temp }}/_toolcache
-#      AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/_toolcache
 
     steps:
       - name: Checkout repository
@@ -32,6 +28,21 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
+      - name: Set run type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "RUN_TYPE=manual" >> $GITHUB_ENV
+          else
+            HOUR=$(date -u +'%H')
+            if [ "$HOUR" = "20" ] || [ "$HOUR" = "21" ]; then
+              echo "RUN_TYPE=postrace" >> $GITHUB_ENV
+            else
+              echo "No run scheduled for this time"
+              exit 0
+            fi
+          fi
+
       - name: Run RaceSpineCreation_Results.py
+        env:
+          RUN_TYPE: ${{ env.RUN_TYPE }}
         run: python "2. Daily/1a. RaceSpineCreation_Results.py"
-        
