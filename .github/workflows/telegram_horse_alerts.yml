@@ -2,8 +2,14 @@ name: Telegram Horse Alerts
 
 on:
   schedule:
+    # Morning alert (07:00 UK)
+    - cron: "0 6 * * *"
     - cron: "0 7 * * *"
+
+    # Evening alert (22:00 UK)
+    - cron: "0 21 * * *"
     - cron: "0 22 * * *"
+
   workflow_dispatch:
     inputs:
       alert_type:
