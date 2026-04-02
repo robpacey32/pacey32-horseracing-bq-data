@@ -2,14 +2,10 @@ name: 🕒 Scrape Races Daily
 
 on:
   schedule:
-    # Morning scrape (03:00 UK)
-    - cron: "0 2 * * *"
     - cron: "0 3 * * *"
-
-    # Evening scrape (21:30 UK)
-    - cron: "30 20 * * *"
+      timezone: "Europe/London"
     - cron: "30 21 * * *"
-
+      timezone: "Europe/London"
   workflow_dispatch:
 
 jobs:
@@ -33,25 +29,5 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
-      - name: Set scrape type
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "SCRAPE_TYPE=manual" >> $GITHUB_ENV
-          else
-            HOUR=$(date -u +'%H')
-            MINUTE=$(date -u +'%M')
-
-            if [ "$MINUTE" = "00" ] && { [ "$HOUR" = "02" ] || [ "$HOUR" = "03" ]; }; then
-              echo "SCRAPE_TYPE=morning" >> $GITHUB_ENV
-            elif [ "$MINUTE" = "30" ] && { [ "$HOUR" = "20" ] || [ "$HOUR" = "21" ]; }; then
-              echo "SCRAPE_TYPE=evening" >> $GITHUB_ENV
-            else
-              echo "No scrape scheduled for this time"
-              exit 0
-            fi
-          fi
-
       - name: Run ScrapeFromSpine.py
-        env:
-          SCRAPE_TYPE: ${{ env.SCRAPE_TYPE }}
         run: python "2. Daily/2. ScrapeFromSpine.py"
