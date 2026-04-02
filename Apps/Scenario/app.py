@@ -85,6 +85,16 @@ def fmt_gbp2(x) -> str:
 def fmt_pct1(x: float) -> str:
     return f"{x*100:.1f}%"
 
+def is_true_like(x) -> bool:
+    """
+    Treat common boolean-ish values as True.
+    Handles: True, 1, '1', 'Y', 'YES', 'TRUE', 'T'
+    """
+    if pd.isna(x):
+        return False
+    s = str(x).strip().upper()
+    return s in {"TRUE", "T", "Y", "YES", "1"}
+
 
 # ------------------------
 # App config
@@ -106,30 +116,22 @@ with st.sidebar:
     st.divider()
     st.subheader("Runner filters")
 
-    st.caption("Form flags (RaceHistoryStats)")
-    must_have = st.multiselect(
-        "Must include (AND)",
-        options=TOKENS,
-        default=[],
-        help="Selected tokens must all be present in RaceHistoryStats.",
-    )
-    must_not_have = st.multiselect(
-        "Must NOT include",
-        options=TOKENS,
-        default=[],
-        help="Selected tokens must not be present in RaceHistoryStats.",
-    )
-    only_exact = st.checkbox(
-        "Only exactly these flags (no extra flags)",
-        value=False,
-        help="If enabled, RaceHistoryStats must contain exactly the 'Must include' set and nothing else.",
-    )
+    st.caption("Runner requirements")
+    f_cd = st.checkbox("CD", value=False)
+    f_c = st.checkbox("C", value=False)
+    f_d = st.checkbox("D", value=False)
+    f_bf = st.checkbox("BF", value=False)
+    f_favourite = st.checkbox("Favourite", value=False)
 
-    st.caption("Other flags")
-    f_favourite = st.checkbox(
-        "Favourite",
+    st.caption("Recent performance")
+    f_won_last_3 = st.checkbox("Won in last 3", value=False)
+    f_win_2_last_6 = st.checkbox("Win 2 in last 6", value=False)
+
+    st.caption("Race-level requirements")
+    f_only_one_qualifier_in_race = st.checkbox(
+        "Only 1 horse in race meets requirement",
         value=False,
-        help='Matches BigQuery column Favourite = "f".',
+        help="After applying the selected runner filters, keep only races where exactly one horse qualifies.",
     )
 
     st.caption("Odds filters (fractional, e.g. 1.0=Evens)")
@@ -208,19 +210,38 @@ mask = pd.Series(True, index=df.index)
 
 token_sets = df["RaceHistoryStats"].map(parse_tokens)
 
-for t in must_have:
-    mask &= token_sets.map(lambda s: t in s)
+# Runner-level token filters
+if f_cd:
+    mask &= token_sets.map(lambda s: "CD" in s)
 
-for t in must_not_have:
-    mask &= token_sets.map(lambda s: t not in s)
+if f_c:
+    mask &= token_sets.map(lambda s: "C" in s)
 
-if only_exact:
-    must_set = set(must_have)
-    mask &= token_sets.map(lambda s: s == must_set)
+if f_d:
+    mask &= token_sets.map(lambda s: "D" in s)
 
+if f_bf:
+    mask &= token_sets.map(lambda s: "BF" in s)
+
+# Favourite
 if f_favourite:
     mask &= df["Favourite"].astype(str).str.lower().eq("f")
 
+# Additional boolean/stat filters
+# These require matching columns to exist in your scenario base view.
+if f_won_last_3:
+    if "WonInLast3" in df.columns:
+        mask &= df["WonInLast3"].map(is_true_like)
+    else:
+        st.warning("Column 'WonInLast3' not found in scenario base data.")
+
+if f_win_2_last_6:
+    if "Win2InLast6" in df.columns:
+        mask &= df["Win2InLast6"].map(is_true_like)
+    else:
+        st.warning("Column 'Win2InLast6' not found in scenario base data.")
+
+# Odds filter
 mask &= df["Odds_dec"].fillna(-1).between(odds_min, odds_max)
 
 filt = df.loc[mask].copy()
@@ -228,6 +249,28 @@ filt = df.loc[mask].copy()
 if filt.empty:
     st.info("No runners match the current filters.")
     st.stop()
+
+# Race-level filter:
+# keep only races where exactly one runner remains after all runner filters
+if f_only_one_qualifier_in_race:
+    race_group_cols = [c for c in ["RaceDateTime", "RaceLocation", "RaceTime"] if c in filt.columns]
+
+    if len(race_group_cols) == 3:
+        qualifier_counts = (
+            filt.groupby(race_group_cols)["HorseName"]
+            .size()
+            .reset_index(name="qualifier_count")
+        )
+
+        filt = filt.merge(qualifier_counts, on=race_group_cols, how="left")
+        filt = filt.loc[filt["qualifier_count"] == 1].copy()
+        filt = filt.drop(columns=["qualifier_count"], errors="ignore")
+    else:
+        st.warning("Could not apply 'Only 1 horse in race meets requirement' because race grouping columns are missing.")
+
+    if filt.empty:
+        st.info("No runners match the current filters after race-level filtering.")
+        st.stop()
 
 
 # ------------------------

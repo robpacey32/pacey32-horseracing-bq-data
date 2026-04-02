@@ -61,7 +61,8 @@ def calculate_returns_split(row, stake: float, each_way: bool):
     except Exception:
         win_ew = np.nan
 
-    if result is None or runners is None or pd.isna(win_ew):
+    # Always need result + odds
+    if result is None or pd.isna(win_ew):
         return {
             "Staked": np.nan,
             "Win_Returns": np.nan,
@@ -71,7 +72,7 @@ def calculate_returns_split(row, stake: float, each_way: bool):
         }
 
     if not each_way:
-        # WIN ONLY
+        # WIN ONLY: runners are not needed
         staked = float(stake)
         win_returns = staked * win_ew + staked if result == 1 else 0.0
         total = win_returns
@@ -83,7 +84,16 @@ def calculate_returns_split(row, stake: float, each_way: bool):
             "Profit": total - staked,
         }
 
-    # EACH WAY
+    # EACH WAY: runners are required
+    if runners is None:
+        return {
+            "Staked": np.nan,
+            "Win_Returns": np.nan,
+            "Place_Returns": np.nan,
+            "Total_Returns": np.nan,
+            "Profit": np.nan,
+        }
+
     place_terms, places_paid, ew_possible = _get_ew_terms(runners, is_handicap)
 
     stake_win = float(stake)
@@ -94,7 +104,7 @@ def calculate_returns_split(row, stake: float, each_way: bool):
     win_returns = stake_win * win_ew + stake_win if result == 1 else 0.0
 
     # Place part
-    placed = (result is not None) and (result <= places_paid) and (places_paid > 0)
+    placed = (result <= places_paid) and (places_paid > 0)
     place_odds = win_ew * place_terms
     place_returns = stake_place * place_odds + stake_place if placed else 0.0
 

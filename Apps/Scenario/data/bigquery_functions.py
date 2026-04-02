@@ -63,7 +63,8 @@ def _get_bq_client():
     )
 
 
-@st.cache_data(show_spinner="Loading scenario dataset...", ttl=3600)
+#@st.cache_data(show_spinner="Loading scenario dataset...", ttl=3600)
+@st.cache_data(show_spinner="Loading scenario dataset...", ttl=0)
 def get_scenario_base(date_from, date_to):
     """
     Returns runner-level rows across the selected date range.
@@ -89,7 +90,10 @@ def get_scenario_base(date_from, date_to):
         Post_RaceRunners,
         HandicappedRace,
         RaceHistoryStats,
-        Favourite
+        Favourite,
+        Form,
+        WonInLast3,
+        Win2InLast6
     FROM `{SCENARIO_BASE_VIEW}`
     WHERE DATE(RaceDateTime) BETWEEN @d1 AND @d2
     """
