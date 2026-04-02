@@ -1,8 +1,4 @@
 import os
-import sys
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 import requests
 from google.cloud import bigquery
 
@@ -12,16 +8,6 @@ USERS_TABLE = f"{PROJECT_ID}.bettingalerts.TelegramUsers"
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALERT_TYPE = os.environ["ALERT_TYPE"]  # morning or evening
 
-def is_correct_uk_time(alert_type: str) -> bool:
-    now_uk = datetime.now(ZoneInfo("Europe/London"))
-
-    if alert_type == "morning":
-        return now_uk.hour == 7 and now_uk.minute == 0
-
-    if alert_type == "evening":
-        return now_uk.hour == 22 and now_uk.minute == 0
-
-    raise ValueError("ALERT_TYPE must be 'morning' or 'evening'")
 
 def run_query(query: str, job_config=None):
     client = bigquery.Client(project=PROJECT_ID)
@@ -71,6 +57,7 @@ def update_last_alert_and_count(user_id: str, message: str):
     )
     client.query(query, job_config=job_config).result()
 
+
 def save_morning_selections():
     client = bigquery.Client(project=PROJECT_ID)
 
@@ -98,7 +85,7 @@ def save_morning_selections():
     FROM `horseracing-pacey32-github.bettingalerts.2_SelectedHorses`;
     """
     client.query(query).result()
-    
+
 
 def build_morning_message():
     query = """
@@ -154,14 +141,6 @@ def build_evening_message():
 
 
 def main():
-    if not is_correct_uk_time(ALERT_TYPE):
-        now_uk = datetime.now(ZoneInfo("Europe/London"))
-        print(
-            f"Skipping run. ALERT_TYPE={ALERT_TYPE}, "
-            f"current UK time is {now_uk.strftime('%Y-%m-%d %H:%M:%S %Z')}"
-        )
-        sys.exit(0)
-
     if ALERT_TYPE == "morning":
         save_morning_selections()
         message = build_morning_message()
