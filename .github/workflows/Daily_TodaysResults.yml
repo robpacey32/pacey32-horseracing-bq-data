@@ -2,9 +2,8 @@ name: 🕒 Update Race Spine (Postrace @ 9pm)
 
 on:
   schedule:
-    # 21:00 UK time
-    - cron: "0 20 * * *"
     - cron: "0 21 * * *"
+      timezone: "Europe/London"
   workflow_dispatch:
 
 jobs:
@@ -28,21 +27,5 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
-      - name: Set run type
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "RUN_TYPE=manual" >> $GITHUB_ENV
-          else
-            HOUR=$(date -u +'%H')
-            if [ "$HOUR" = "20" ] || [ "$HOUR" = "21" ]; then
-              echo "RUN_TYPE=postrace" >> $GITHUB_ENV
-            else
-              echo "No run scheduled for this time"
-              exit 0
-            fi
-          fi
-
       - name: Run RaceSpineCreation_Results.py
-        env:
-          RUN_TYPE: ${{ env.RUN_TYPE }}
         run: python "2. Daily/1a. RaceSpineCreation_Results.py"
