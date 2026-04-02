@@ -356,14 +356,17 @@ race_key_cols = [c for c in ["RaceDateTime", "RaceLocation", "RaceTime"] if c in
 races_represented = sim[race_key_cols].drop_duplicates().shape[0] if race_key_cols else 0
 
 st.markdown("### Performance summary and selection stats")
-m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-m1.metric("Horses selected", f"{len(sim):,}")
-m2.metric("Races represented", f"{races_represented:,}")
-m3.metric("Total staked", fmt_gbp0(total_staked))
-m4.metric("Returned", fmt_gbp0(total_returns))
-m5.metric("Profit", fmt_gbp2(profit))
-m6.metric("ROI", fmt_pct1(roi))
-m7.metric("Strike Rate", fmt_pct1(strike_rate))
+
+sp1 = st.columns([0.3, 1, 1, 1, 1, 0.3], gap="small")
+sp1[1].metric("Horses selected", f"{len(sim):,}")
+sp1[2].metric("Races represented", f"{races_represented:,}")
+sp1[3].metric("Total staked", fmt_gbp0(total_staked))
+sp1[4].metric("Returned", fmt_gbp0(total_returns))
+
+sp2 = st.columns([0.8, 1, 1, 1, 0.8], gap="small")
+sp2[1].metric("Profit", fmt_gbp2(profit))
+sp2[2].metric("ROI", fmt_pct1(roi))
+sp2[3].metric("Strike Rate", fmt_pct1(strike_rate))
 
 
 # ------------------------
