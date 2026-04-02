@@ -8,16 +8,14 @@
 # race statuses to RaceSpine with a new load_timestamp.
 #
 # Author: Rob Pacey
-# Last Updated: 2026-04-01
+# Last Updated: 2026-04-02
 # ===============================================================
 
 import os
 import re
-import sys
 import time
 import pandas as pd
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -35,22 +33,6 @@ DATASET_ID = "horseracescrape"
 VIEW_NAME = "RaceSpine_Latest"
 KEY_PATH = "key.json"
 MAX_RACES = int(os.getenv("MAX_RACES", "200"))
-SCRAPE_TYPE = os.getenv("SCRAPE_TYPE", "manual")
-
-
-def is_correct_uk_time(scrape_type: str) -> bool:
-    now_uk = datetime.now(ZoneInfo("Europe/London"))
-
-    if scrape_type == "morning":
-        return now_uk.hour == 3 and now_uk.minute == 0
-
-    if scrape_type == "evening":
-        return now_uk.hour == 21 and now_uk.minute == 30
-
-    if scrape_type == "manual":
-        return True
-
-    raise ValueError("SCRAPE_TYPE must be 'morning', 'evening', or 'manual'")
 
 
 # ===============================================================
@@ -590,16 +572,6 @@ def append_status_updates(status_rows):
 # 🚀 MAIN EXECUTION
 # ===============================================================
 def main():
-    now_uk = datetime.now(ZoneInfo("Europe/London"))
-    print(
-        f"Starting scrape. SCRAPE_TYPE={SCRAPE_TYPE}, "
-        f"UK time={now_uk.strftime('%Y-%m-%d %H:%M:%S %Z')}"
-    )
-
-    if not is_correct_uk_time(SCRAPE_TYPE):
-        print("Skipping run because this is not the correct UK local time.")
-        sys.exit(0)
-
     df_races = load_pending_races()
     if df_races.empty:
         return
