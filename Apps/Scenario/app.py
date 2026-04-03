@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -84,6 +85,7 @@ def fmt_gbp2(x) -> str:
 
 def fmt_pct1(x: float) -> str:
     return f"{x*100:.1f}%"
+
 
 def is_true_like(x) -> bool:
     """
@@ -279,8 +281,37 @@ if f_only_one_qualifier_in_race:
 sim = apply_strategy(filt, stake=stake, each_way=each_way, stake_mode=stake_mode)
 
 # Ensure fields for tooltip
-sim["RaceTime"] = sim.get("RaceTime", "").astype(str)
-sim["RaceLocation"] = sim.get("RaceLocation", "").astype(str)
+if "RaceTime" not in sim.columns:
+    sim["RaceTime"] = ""
+if "RaceLocation" not in sim.columns:
+    sim["RaceLocation"] = ""
+if "HorseName" not in sim.columns:
+    sim["HorseName"] = ""
+
+sim["RaceTime"] = sim["RaceTime"].astype(str)
+sim["RaceLocation"] = sim["RaceLocation"].astype(str)
+sim["HorseName"] = sim["HorseName"].astype(str)
+
+# Convert relevant return columns to numeric without forcing 0s
+for col in ["Staked", "Win_Returns", "Place_Returns", "Total_Returns", "Profit"]:
+    if col not in sim.columns:
+        sim[col] = np.nan
+    sim[col] = pd.to_numeric(sim[col], errors="coerce")
+
+# Rebuild total returns only where win/place values exist
+sim["Total_Returns_Calc"] = np.where(
+    sim["Win_Returns"].notna() | sim["Place_Returns"].notna(),
+    sim["Win_Returns"].fillna(0) + sim["Place_Returns"].fillna(0),
+    sim["Total_Returns"]
+)
+
+# Rebuild profit only where we have enough information
+sim["Profit_Calc"] = np.where(
+    sim["Total_Returns_Calc"].notna() & sim["Staked"].notna(),
+    sim["Total_Returns_Calc"] - sim["Staked"],
+    sim["Profit"]
+)
+
 
 # ------------------------
 # Top visual: CUMULATIVE Profit over time with hover details
@@ -291,8 +322,9 @@ def _fmt_profit(x):
     except Exception:
         return "NA"
 
+
 sim["_hover_line"] = sim.apply(
-    lambda r: f"{r['RaceTime']} | {r['RaceLocation']} | {r['HorseName']} | Profit: {_fmt_profit(r['Profit'])}",
+    lambda r: f"{r['RaceTime']} | {r['RaceLocation']} | {r['HorseName']} | Profit: {_fmt_profit(r['Profit_Calc'])}",
     axis=1,
 )
 
@@ -300,7 +332,7 @@ MAX_LINES = 20
 daily = (
     sim.groupby("RaceDate", dropna=False)
     .agg(
-        DailyProfit=("Profit", "sum"),
+        DailyProfit=("Profit_Calc", "sum"),
         Details=("_hover_line", lambda s: "<br>".join(list(s)[:MAX_LINES]) + ("" if len(s) <= MAX_LINES else "<br>…")),
     )
     .reset_index()
@@ -347,8 +379,8 @@ st.plotly_chart(fig, use_container_width=True)
 # Performance summary and selection stats (formatted)
 # ------------------------
 total_staked = float(sim["Staked"].fillna(0).sum())
-total_returns = float(sim["Total_Returns"].fillna(0).sum())
-profit = total_returns - total_staked
+total_returns = float(sim["Total_Returns_Calc"].fillna(0).sum())
+profit = float(sim["Profit_Calc"].fillna(0).sum())
 roi = (profit / total_staked) if total_staked > 0 else 0.0
 strike_rate = (sim["Result_Position"].astype(str).str.strip().eq("1").mean()) if len(sim) else 0.0
 
@@ -401,8 +433,8 @@ tbl["RaceHistoryStats"] = tbl.get("RaceHistoryStats", "").map(display_tokens)
 tbl["Staked"] = tbl.get("Staked", "").map(fmt_gbp0)
 tbl["Win Returns"] = tbl.get("Win_Returns", "").map(fmt_gbp0)
 tbl["Place Returns"] = tbl.get("Place_Returns", "").map(fmt_gbp0)
-tbl["Total Returns"] = tbl.get("Total_Returns", "").map(fmt_gbp0)
-tbl["Profit"] = tbl.get("Profit", "").map(fmt_gbp2)
+tbl["Total Returns"] = tbl.get("Total_Returns_Calc", "").map(fmt_gbp0)
+tbl["Profit"] = tbl.get("Profit_Calc", "").map(fmt_gbp2)
 
 display_cols = [
     "RaceDate",
