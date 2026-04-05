@@ -1,34 +1,33 @@
 name: Scenario Iterations GitHub
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1"
+      timezone: "Europe/London"
+  workflow_dispatch:
 
 jobs:
-  run-scenario-iterations:
+  scenario_iterations:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install pandas numpy google-cloud-bigquery google-cloud-bigquery-storage pyarrow fastavro db-dtypes
+        run: pip install -r requirements.txt
 
       - name: Create BigQuery credentials file
         run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
         env:
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
-      - name: Run scenario iterations
+      - name: Run scenario_iterations_github.py
         env:
           GOOGLE_APPLICATION_CREDENTIALS: key.json
-        run: |
-          python "2. Daily/scenario_iterations_github.py"
+        run: python "2. Daily/scenario_iterations_github.py"
