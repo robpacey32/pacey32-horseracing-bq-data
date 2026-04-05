@@ -172,7 +172,6 @@ else:
 
 # RaceDate used for chart grouping
 if "RaceDateDt" in df.columns:
-    # RaceDateDt often already a YYYY-MM-DD string; normalise to date
     df["RaceDate"] = pd.to_datetime(df["RaceDateDt"], errors="coerce").dt.date
 elif "RaceDate" in df.columns:
     df["RaceDate"] = pd.to_datetime(df["RaceDate"], errors="coerce").dt.date
@@ -182,7 +181,6 @@ else:
 # Ensure odds numeric exists for filtering/strategy
 if "Odds_dec" not in df.columns:
     if "Odds" in df.columns:
-        # Best-effort parse fractional strings to fractional-decimal (e.g. "9/2" -> 4.5)
         def _odds_to_dec(x):
             if x is None:
                 return float("nan")
@@ -212,7 +210,6 @@ mask = pd.Series(True, index=df.index)
 
 token_sets = df["RaceHistoryStats"].map(parse_tokens)
 
-# Runner-level token filters
 if f_cd:
     mask &= token_sets.map(lambda s: "CD" in s)
 
@@ -225,12 +222,9 @@ if f_d:
 if f_bf:
     mask &= token_sets.map(lambda s: "BF" in s)
 
-# Favourite
 if f_favourite:
     mask &= df["Favourite"].astype(str).str.lower().eq("f")
 
-# Additional boolean/stat filters
-# These require matching columns to exist in your scenario base view.
 if f_won_last_3:
     if "WonInLast3" in df.columns:
         mask &= df["WonInLast3"].map(is_true_like)
@@ -243,7 +237,6 @@ if f_win_2_last_6:
     else:
         st.warning("Column 'Win2InLast6' not found in scenario base data.")
 
-# Odds filter
 mask &= df["Odds_dec"].fillna(-1).between(odds_min, odds_max)
 
 filt = df.loc[mask].copy()
@@ -252,8 +245,6 @@ if filt.empty:
     st.info("No runners match the current filters.")
     st.stop()
 
-# Race-level filter:
-# keep only races where exactly one runner remains after all runner filters
 if f_only_one_qualifier_in_race:
     race_group_cols = [c for c in ["RaceDateTime", "RaceLocation", "RaceTime"] if c in filt.columns]
 
@@ -280,7 +271,6 @@ if f_only_one_qualifier_in_race:
 # ------------------------
 sim = apply_strategy(filt, stake=stake, each_way=each_way, stake_mode=stake_mode)
 
-# Ensure fields for tooltip
 if "RaceTime" not in sim.columns:
     sim["RaceTime"] = ""
 if "RaceLocation" not in sim.columns:
@@ -292,29 +282,32 @@ sim["RaceTime"] = sim["RaceTime"].astype(str)
 sim["RaceLocation"] = sim["RaceLocation"].astype(str)
 sim["HorseName"] = sim["HorseName"].astype(str)
 
-# Convert relevant return columns to numeric without forcing 0s
 for col in ["Staked", "Win_Returns", "Place_Returns", "Total_Returns", "Profit"]:
     if col not in sim.columns:
         sim[col] = np.nan
     sim[col] = pd.to_numeric(sim[col], errors="coerce")
 
-# Rebuild total returns only where win/place values exist
 sim["Total_Returns_Calc"] = np.where(
     sim["Win_Returns"].notna() | sim["Place_Returns"].notna(),
     sim["Win_Returns"].fillna(0) + sim["Place_Returns"].fillna(0),
     sim["Total_Returns"]
 )
 
-# Rebuild profit only where we have enough information
 sim["Profit_Calc"] = np.where(
     sim["Total_Returns_Calc"].notna() & sim["Staked"].notna(),
     sim["Total_Returns_Calc"] - sim["Staked"],
     sim["Profit"]
 )
 
+chart_view = st.selectbox(
+    "Chart view",
+    ["Both", "Cumulative", "Non-Cumulative"],
+    index=0,
+)
+
 
 # ------------------------
-# Top visual: CUMULATIVE Profit over time with hover details
+# Top visual: Profit over time with hover details
 # ------------------------
 def _fmt_profit(x):
     try:
@@ -342,32 +335,72 @@ daily["RaceDate"] = pd.to_datetime(daily["RaceDate"], errors="coerce")
 daily = daily.sort_values("RaceDate")
 daily["CumulativeProfit"] = daily["DailyProfit"].cumsum()
 
-fig = px.line(
-    daily,
-    x="RaceDate",
-    y="CumulativeProfit",
-    markers=True,
-    title="Cumulative profit over time",
-    custom_data=["Details", "DailyProfit"],
-)
-
-fig.update_traces(
-    hovertemplate=(
-        "<b>%{x|%Y-%m-%d}</b>"
-        "<br>Daily Profit: %{customdata[1]:.2f}"
-        "<br>Cumulative Profit: %{y:.2f}"
-        "<br><br>%{customdata[0]}"
-        "<extra></extra>"
+if chart_view == "Cumulative":
+    fig = px.line(
+        daily,
+        x="RaceDate",
+        y="CumulativeProfit",
+        markers=True,
+        title="Cumulative profit over time",
+        custom_data=["Details", "DailyProfit"],
     )
-)
 
-# Prominent y=0 line; subtle grids
+    fig.update_traces(
+        hovertemplate=(
+            "<b>%{x|%Y-%m-%d}</b>"
+            "<br>Daily Profit: %{customdata[1]:.2f}"
+            "<br>Cumulative Profit: %{y:.2f}"
+            "<br><br>%{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+    yaxis_title = "Cumulative profit"
+
+elif chart_view == "Non-Cumulative":
+    fig = px.bar(
+        daily,
+        x="RaceDate",
+        y="DailyProfit",
+        title="Daily profit over time",
+        custom_data=["Details"],
+    )
+
+    fig.update_traces(
+        hovertemplate=(
+            "<b>%{x|%Y-%m-%d}</b>"
+            "<br>Daily Profit: %{y:.2f}"
+            "<br><br>%{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+    yaxis_title = "Daily profit"
+
+else:
+    fig = px.line(
+        daily,
+        x="RaceDate",
+        y=["CumulativeProfit", "DailyProfit"],
+        markers=True,
+        title="Profit over time",
+        custom_data=["Details"],
+    )
+
+    fig.update_traces(
+        hovertemplate=(
+            "<b>%{x|%Y-%m-%d}</b>"
+            "<br>%{fullData.name}: %{y:.2f}"
+            "<br><br>%{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+    yaxis_title = "Profit"
+
 fig.add_hline(y=0, line_width=3, line_color=GREEN, opacity=0.9)
 
 fig.update_layout(
     title_font_color=GREEN,
     xaxis_title="Race date",
-    yaxis_title="Cumulative profit",
+    yaxis_title=yaxis_title,
     yaxis=dict(zeroline=False, showgrid=True, gridcolor="rgba(0,0,0,0.08)"),
     xaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.06)"),
 )
@@ -408,28 +441,20 @@ st.markdown("### Selections")
 
 tbl = sim.copy()
 
-# RaceDate: use RaceDateDt if present, else derive from RaceDateTime
 if "RaceDateDt" in tbl.columns:
     tbl["RaceDate"] = tbl["RaceDateDt"].astype(str)
 else:
     tbl["RaceDate"] = pd.to_datetime(tbl["RaceDateTime"], errors="coerce").dt.date.astype(str)
 
-# Odds: show Odds if present, else fall back to Odds_dec
 if "Odds" in tbl.columns:
     tbl["Odds"] = tbl["Odds"].astype(str)
 else:
     tbl["Odds"] = tbl["Odds_dec"].map(lambda v: "" if pd.isna(v) else f"{float(v):g}")
 
-# Favourite as Y/N
 tbl["Favourite"] = tbl.get("Favourite", "").map(favourite_yn)
-
-# Result Position display with DNF
 tbl["Result Position"] = tbl.get("Result_Position", "").map(result_position_display)
-
-# Clean RaceHistoryStats for display
 tbl["RaceHistoryStats"] = tbl.get("RaceHistoryStats", "").map(display_tokens)
 
-# Currency formatting
 tbl["Staked"] = tbl.get("Staked", "").map(fmt_gbp0)
 tbl["Win Returns"] = tbl.get("Win_Returns", "").map(fmt_gbp0)
 tbl["Place Returns"] = tbl.get("Place_Returns", "").map(fmt_gbp0)
