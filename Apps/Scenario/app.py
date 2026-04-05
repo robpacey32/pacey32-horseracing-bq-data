@@ -10,6 +10,8 @@ from scenario_engine import apply_strategy
 
 
 GREEN = "#4B5942"  # theme green
+GREEN_DARK = "#164E19"
+GREEN_LIGHT = "#4D9C51"
 TOKENS = ["CD", "C", "D", "BF"]
 
 
@@ -354,6 +356,9 @@ if chart_view == "Cumulative":
             "<extra></extra>"
         )
     )
+
+    fig.update_traces(line_color=GREEN_DARK)
+
     yaxis_title = "Cumulative profit"
 
 elif chart_view == "Non-Cumulative":
@@ -373,6 +378,9 @@ elif chart_view == "Non-Cumulative":
             "<extra></extra>"
         )
     )
+
+    fig.update_traces(marker_color=GREEN_LIGHT)
+    
     yaxis_title = "Daily profit"
 
 else:
@@ -383,6 +391,10 @@ else:
         markers=True,
         title="Profit over time",
         custom_data=["Details"],
+        color_discrete_map={
+            "CumulativeProfit": GREEN_DARK,
+            "DailyProfit": GREEN_LIGHT,
+        },
     )
 
     fig.update_traces(
@@ -393,6 +405,14 @@ else:
             "<extra></extra>"
         )
     )
+
+    # Make cumulative thicker
+    for trace in fig.data:
+        if trace.name == "CumulativeProfit":
+            trace.line.width = 4
+        else:
+            trace.line.width = 2
+
     yaxis_title = "Profit"
 
 fig.add_hline(y=0, line_width=3, line_color=GREEN, opacity=0.9)
