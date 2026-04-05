@@ -20,7 +20,6 @@ def inject_css():
     if css_path.exists():
         st.markdown(f"<style>{css_path.read_text()}</style>", unsafe_allow_html=True)
 
-    # Force main page text/metrics to green (keeps layout but fixes white text)
     st.markdown(
         f"""
         <style>
@@ -40,9 +39,6 @@ def inject_css():
 
 
 def parse_tokens(val: str) -> set[str]:
-    """
-    "| BF | | CD" -> {"BF","CD"}
-    """
     if val is None:
         return set()
     parts = [p.strip().upper() for p in str(val).split("|")]
@@ -51,9 +47,6 @@ def parse_tokens(val: str) -> set[str]:
 
 
 def display_tokens(val: str) -> str:
-    """
-    "| BF | | CD" -> "BF & CD" (fixed order)
-    """
     toks = parse_tokens(val)
     ordered = [t for t in TOKENS if t in toks]
     return " & ".join(ordered)
@@ -90,14 +83,47 @@ def fmt_pct1(x: float) -> str:
 
 
 def is_true_like(x) -> bool:
-    """
-    Treat common boolean-ish values as True.
-    Handles: True, 1, '1', 'Y', 'YES', 'TRUE', 'T'
-    """
     if pd.isna(x):
         return False
     s = str(x).strip().upper()
     return s in {"TRUE", "T", "Y", "YES", "1"}
+
+
+def bool_to_yn(x) -> str:
+    if pd.isna(x):
+        return "N"
+    return "Y" if bool(x) else "N"
+
+
+def add_min_max_row(label, min_key, max_key, min_value, max_value, step=1, is_float=False):
+    c1, c2, c3 = st.columns([1.6, 1, 1])
+    with c1:
+        st.markdown(f"**{label}**")
+    with c2:
+        min_val = st.number_input(
+            "min",
+            min_value=0.0 if is_float else 0,
+            value=min_value,
+            step=step,
+            key=min_key,
+        )
+    with c3:
+        max_val = st.number_input(
+            "max",
+            min_value=0.0 if is_float else 0,
+            value=max_value,
+            step=step,
+            key=max_key,
+        )
+    return min_val, max_val
+
+
+def yn_cell_colour(val):
+    if val == "Y":
+        return "background-color: #d8f5d0; color: #1e4620;"
+    elif val == "N":
+        return "background-color: #fde6c9; color: #5a3b00;"
+    return ""
 
 
 # ------------------------
@@ -118,9 +144,9 @@ with st.sidebar:
     date_to = st.date_input("To", value=today)
 
     st.divider()
-    st.subheader("Runner filters")
+    st.subheader("Runner Flags")
 
-    st.caption("Runner requirements")
+    st.caption("Core flags")
     f_cd = st.checkbox("CD", value=False)
     f_c = st.checkbox("C", value=False)
     f_d = st.checkbox("D", value=False)
@@ -138,9 +164,71 @@ with st.sidebar:
         help="After applying the selected runner filters, keep only races where exactly one horse qualifies.",
     )
 
-    st.caption("Odds filters (fractional, e.g. 1.0=Evens)")
-    odds_min = st.number_input("Min odds", min_value=0.0, value=0.0, step=0.5)
-    odds_max = st.number_input("Max odds", min_value=0.0, value=50.0, step=0.5)
+    st.caption("Going")
+    g_standard = st.checkbox("Standard", value=False)
+    g_soft = st.checkbox("Soft", value=False)
+    g_good = st.checkbox("Good", value=False)
+    g_heavy = st.checkbox("Heavy", value=False)
+    g_gtf = st.checkbox("Good to Firm / Firm", value=False)
+    g_gts = st.checkbox("Good to Soft", value=False)
+
+    st.caption("Track")
+    t_turf = st.checkbox("Turf", value=False)
+    t_aw = st.checkbox("AW", value=False)
+    t_poly = st.checkbox("Poly", value=False)
+
+    st.divider()
+    st.subheader("Numeric Flags")
+
+    odds_min, odds_max = add_min_max_row(
+        "Odds",
+        "odds_min",
+        "odds_max",
+        0.0,
+        50.0,
+        step=0.5,
+        is_float=True,
+    )
+
+    last_run_min, last_run_max = add_min_max_row(
+        "Last Run",
+        "last_run_min",
+        "last_run_max",
+        0,
+        999,
+        step=1,
+        is_float=False,
+    )
+
+    age_min, age_max = add_min_max_row(
+        "Age",
+        "age_min",
+        "age_max",
+        0,
+        99,
+        step=1,
+        is_float=False,
+    )
+
+    weight_min, weight_max = add_min_max_row(
+        "Weight (lbs)",
+        "weight_min",
+        "weight_max",
+        0,
+        999,
+        step=1,
+        is_float=False,
+    )
+
+    dist_min, dist_max = add_min_max_row(
+        "Distance (furlongs)",
+        "dist_min",
+        "dist_max",
+        0.0,
+        999.0,
+        step=0.5,
+        is_float=True,
+    )
 
     st.divider()
     st.subheader("Bet settings")
@@ -159,20 +247,17 @@ if df.empty:
     st.warning("No rows returned for the selected date range.")
     st.stop()
 
-# Normalise expected fields
 if "RaceHistoryStats" not in df.columns:
     df["RaceHistoryStats"] = ""
 if "Favourite" not in df.columns:
     df["Favourite"] = ""
 
-# Ensure datetime/date fields
 if "RaceDateTime" in df.columns:
     df["RaceDateTime"] = pd.to_datetime(df["RaceDateTime"], errors="coerce")
 else:
     st.error("Missing required column: RaceDateTime")
     st.stop()
 
-# RaceDate used for chart grouping
 if "RaceDateDt" in df.columns:
     df["RaceDate"] = pd.to_datetime(df["RaceDateDt"], errors="coerce").dt.date
 elif "RaceDate" in df.columns:
@@ -180,7 +265,6 @@ elif "RaceDate" in df.columns:
 else:
     df["RaceDate"] = df["RaceDateTime"].dt.date
 
-# Ensure odds numeric exists for filtering/strategy
 if "Odds_dec" not in df.columns:
     if "Odds" in df.columns:
         def _odds_to_dec(x):
@@ -203,6 +287,19 @@ if "Odds_dec" not in df.columns:
         df["Odds_dec"] = df["Odds"].map(_odds_to_dec)
     else:
         df["Odds_dec"] = float("nan")
+
+for col in ["LastRun_num", "Age_num", "Weight_lbs", "Distance_Furlongs"]:
+    if col not in df.columns:
+        df[col] = np.nan
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
+for col in [
+    "Going_Standard", "Going_Soft", "Going_Good", "Going_Heavy", "Going_GtF", "Going_GtS",
+    "Track_Turf", "Track_AW", "Track_Poly"
+]:
+    if col not in df.columns:
+        df[col] = False
+    df[col] = df[col].fillna(False).astype(bool)
 
 
 # ------------------------
@@ -240,6 +337,44 @@ if f_win_2_last_6:
         st.warning("Column 'Win2InLast6' not found in scenario base data.")
 
 mask &= df["Odds_dec"].fillna(-1).between(odds_min, odds_max)
+mask &= df["LastRun_num"].fillna(-1).between(last_run_min, last_run_max)
+mask &= df["Age_num"].fillna(-1).between(age_min, age_max)
+mask &= df["Weight_lbs"].fillna(-1).between(weight_min, weight_max)
+mask &= df["Distance_Furlongs"].fillna(-1).between(dist_min, dist_max)
+
+going_selected = []
+if g_standard:
+    going_selected.append("Going_Standard")
+if g_soft:
+    going_selected.append("Going_Soft")
+if g_good:
+    going_selected.append("Going_Good")
+if g_heavy:
+    going_selected.append("Going_Heavy")
+if g_gtf:
+    going_selected.append("Going_GtF")
+if g_gts:
+    going_selected.append("Going_GtS")
+
+if going_selected:
+    going_mask = pd.Series(False, index=df.index)
+    for col in going_selected:
+        going_mask |= df[col]
+    mask &= going_mask
+
+track_selected = []
+if t_turf:
+    track_selected.append("Track_Turf")
+if t_aw:
+    track_selected.append("Track_AW")
+if t_poly:
+    track_selected.append("Track_Poly")
+
+if track_selected:
+    track_mask = pd.Series(False, index=df.index)
+    for col in track_selected:
+        track_mask |= df[col]
+    mask &= track_mask
 
 filt = df.loc[mask].copy()
 
@@ -358,7 +493,6 @@ if chart_view == "Cumulative":
     )
 
     fig.update_traces(line_color=GREEN_DARK)
-
     yaxis_title = "Cumulative profit"
 
 elif chart_view == "Non-Cumulative":
@@ -380,7 +514,6 @@ elif chart_view == "Non-Cumulative":
     )
 
     fig.update_traces(marker_color=GREEN_LIGHT)
-    
     yaxis_title = "Daily profit"
 
 else:
@@ -406,7 +539,6 @@ else:
         )
     )
 
-    # Make cumulative thicker
     for trace in fig.data:
         if trace.name == "CumulativeProfit":
             trace.line.width = 4
@@ -475,6 +607,20 @@ tbl["Favourite"] = tbl.get("Favourite", "").map(favourite_yn)
 tbl["Result Position"] = tbl.get("Result_Position", "").map(result_position_display)
 tbl["RaceHistoryStats"] = tbl.get("RaceHistoryStats", "").map(display_tokens)
 
+tbl["Last Run"] = tbl.get("LastRun_num", "")
+tbl["Age"] = tbl.get("Age_num", "")
+tbl["Weight (lbs)"] = tbl.get("Weight_lbs", "")
+tbl["Distance (f)"] = tbl.get("Distance_Furlongs", "")
+tbl["Going Standard"] = tbl.get("Going_Standard", False).map(bool_to_yn)
+tbl["Going Soft"] = tbl.get("Going_Soft", False).map(bool_to_yn)
+tbl["Going Good"] = tbl.get("Going_Good", False).map(bool_to_yn)
+tbl["Going Heavy"] = tbl.get("Going_Heavy", False).map(bool_to_yn)
+tbl["Going GtF"] = tbl.get("Going_GtF", False).map(bool_to_yn)
+tbl["Going GtS"] = tbl.get("Going_GtS", False).map(bool_to_yn)
+tbl["Track Turf"] = tbl.get("Track_Turf", False).map(bool_to_yn)
+tbl["Track AW"] = tbl.get("Track_AW", False).map(bool_to_yn)
+tbl["Track Poly"] = tbl.get("Track_Poly", False).map(bool_to_yn)
+
 tbl["Staked"] = tbl.get("Staked", "").map(fmt_gbp0)
 tbl["Win Returns"] = tbl.get("Win_Returns", "").map(fmt_gbp0)
 tbl["Place Returns"] = tbl.get("Place_Returns", "").map(fmt_gbp0)
@@ -490,6 +636,19 @@ display_cols = [
     "Favourite",
     "Result Position",
     "RaceHistoryStats",
+    "Last Run",
+    "Age",
+    "Weight (lbs)",
+    "Distance (f)",
+    "Going Standard",
+    "Going Soft",
+    "Going Good",
+    "Going Heavy",
+    "Going GtF",
+    "Going GtS",
+    "Track Turf",
+    "Track AW",
+    "Track Poly",
     "Staked",
     "Win Returns",
     "Place Returns",
@@ -498,8 +657,27 @@ display_cols = [
 ]
 display_cols = [c for c in display_cols if c in tbl.columns]
 
+yn_cols = [
+    "Going Standard",
+    "Going Soft",
+    "Going Good",
+    "Going Heavy",
+    "Going GtF",
+    "Going GtS",
+    "Track Turf",
+    "Track AW",
+    "Track Poly",
+]
+
+styled_tbl = tbl[display_cols].sort_values(
+    ["RaceDate", "RaceLocation", "RaceTime", "HorseName"],
+    ascending=True,
+)
+
+styled_tbl = styled_tbl.style.map(yn_cell_colour, subset=yn_cols)
+
 st.dataframe(
-    tbl[display_cols].sort_values(["RaceDate", "RaceLocation", "RaceTime", "HorseName"], ascending=True),
+    styled_tbl,
     use_container_width=True,
     height=650,
 )

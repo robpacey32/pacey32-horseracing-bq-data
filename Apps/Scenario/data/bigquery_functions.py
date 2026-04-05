@@ -63,16 +63,16 @@ def _get_bq_client():
     )
 
 
-#@st.cache_data(show_spinner="Loading scenario dataset...", ttl=3600)
 @st.cache_data(show_spinner="Loading scenario dataset...", ttl=0)
 def get_scenario_base(date_from, date_to):
     """
     Returns runner-level rows across the selected date range.
 
-    Expected to include:
-      RaceDateTime (TIMESTAMP or DATETIME), RaceLocation, HorseName, Odds_dec,
-      Result_Position, Post_RaceRunners, HandicappedRace, RaceHistoryStats,
-      plus anything else you want to filter on.
+    Includes:
+      Existing scenario fields used by the app, plus:
+      LastRun_num, Age_num, Weight_lbs, Distance_Furlongs,
+      Going_Standard, Going_Soft, Going_Good, Going_Heavy, Going_GtF, Going_GtS,
+      Track_Turf, Track_AW, Track_Poly
     """
     client = _get_bq_client()
 
@@ -93,7 +93,35 @@ def get_scenario_base(date_from, date_to):
         Favourite,
         Form,
         WonInLast3,
-        Win2InLast6
+        Win2InLast6,
+
+        -- new numeric fields
+        SAFE_CAST(REGEXP_EXTRACT(CAST(LastRun AS STRING), r'(\\d+)') AS INT64) AS LastRun_num,
+        SAFE_CAST(REGEXP_EXTRACT(CAST(Age AS STRING), r'(\\d+)') AS INT64) AS Age_num,
+        (
+            COALESCE(SAFE_CAST(REGEXP_EXTRACT(CAST(Weight AS STRING), r'^(\\d+)') AS INT64), 0) * 14
+            + COALESCE(SAFE_CAST(REGEXP_EXTRACT(CAST(Weight AS STRING), r'-(\\d+)$') AS INT64), 0)
+        ) AS Weight_lbs,
+
+        (
+            COALESCE(SAFE_CAST(REGEXP_EXTRACT(CAST(Pre_RaceDistance AS STRING), r'(\\d+)m') AS FLOAT64), 0) * 8
+            + COALESCE(SAFE_CAST(REGEXP_EXTRACT(CAST(Pre_RaceDistance AS STRING), r'(\\d+)f') AS FLOAT64), 0)
+            + COALESCE(SAFE_CAST(REGEXP_EXTRACT(CAST(Pre_RaceDistance AS STRING), r'(\\d+)y') AS FLOAT64), 0) / 220
+        ) AS Distance_Furlongs,
+
+        -- going flags
+        REGEXP_CONTAINS(LOWER(COALESCE(CAST(Pre_RaceGoing AS STRING), '')), r'standard') AS Going_Standard,
+        REGEXP_CONTAINS(LOWER(COALESCE(CAST(Pre_RaceGoing AS STRING), '')), r'soft') AS Going_Soft,
+        REGEXP_CONTAINS(LOWER(COALESCE(CAST(Pre_RaceGoing AS STRING), '')), r'good') AS Going_Good,
+        REGEXP_CONTAINS(LOWER(COALESCE(CAST(Pre_RaceGoing AS STRING), '')), r'heavy') AS Going_Heavy,
+        REGEXP_CONTAINS(LOWER(COALESCE(CAST(Pre_RaceGoing AS STRING), '')), r'good to firm|firm') AS Going_GtF,
+        REGEXP_CONTAINS(LOWER(COALESCE(CAST(Pre_RaceGoing AS STRING), '')), r'good to soft') AS Going_GtS,
+
+        -- track flags
+        LOWER(COALESCE(CAST(Pre_RaceSurface AS STRING), '')) IN ('turf', 'grass') AS Track_Turf,
+        LOWER(COALESCE(CAST(Pre_RaceSurface AS STRING), '')) IN ('all-weather', 'aw', 'tapeta', 'polytrack', 'fibresand') AS Track_AW,
+        LOWER(COALESCE(CAST(Pre_RaceSurface AS STRING), '')) = 'polytrack' AS Track_Poly
+
     FROM `{SCENARIO_BASE_VIEW}`
     WHERE DATE(RaceDateTime) BETWEEN @d1 AND @d2
     """
