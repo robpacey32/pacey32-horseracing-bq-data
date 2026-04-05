@@ -1,0 +1,37 @@
+name: Scenario Iterations GitHub
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  run-scenario-iterations:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy google-cloud-bigquery google-cloud-bigquery-storage pyarrow fastavro db-dtypes
+
+      - name: Run scenario iterations
+        run: |
+          python "2. Daily/scenario_iterations_github.py"

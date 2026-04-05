@@ -36,14 +36,8 @@ def load_iterations():
     client = _get_bq_client()
 
     query = """
-    WITH latest_run AS (
-      SELECT MAX(RunTimestamp) AS max_run_ts
-      FROM `horseracing-pacey32-github.horseraceanalytics.ScenarioIterations_GitHub`
-    )
-    SELECT t.*
-    FROM `horseracing-pacey32-github.horseraceanalytics.ScenarioIterations_GitHub` t
-    INNER JOIN latest_run r
-      ON t.RunTimestamp = r.max_run_ts
+    SELECT *
+    FROM `horseracing-pacey32-github.horseraceanalytics.ScenarioIterations_Latest_vw`
     """
 
     df = client.query(query).result().to_dataframe()
