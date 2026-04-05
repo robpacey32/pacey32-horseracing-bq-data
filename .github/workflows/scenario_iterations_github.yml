@@ -5,10 +5,6 @@ on:
   schedule:
     - cron: "0 6 * * 1"
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
   run-scenario-iterations:
     runs-on: ubuntu-latest
@@ -22,16 +18,17 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
       - name: Install dependencies
         run: |
           pip install pandas numpy google-cloud-bigquery google-cloud-bigquery-storage pyarrow fastavro db-dtypes
 
+      - name: Create BigQuery credentials file
+        run: echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+
       - name: Run scenario iterations
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: key.json
         run: |
           python "2. Daily/scenario_iterations_github.py"
