@@ -56,7 +56,7 @@ def load_source_data(client: bigquery.Client, date_from: pd.Timestamp) -> pd.Dat
             ]
         ),
     )
-    return job.result().to_dataframe()
+    return job.result().to_dataframe(create_bqstorage_client=False)
 
 
 def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
