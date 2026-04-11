@@ -42,12 +42,6 @@ from shared.config import get_config
 
 load_app_css()
 
-#with st.sidebar:
-#    st.markdown(
-#        "<h2 style='margin-bottom:0.5rem;'>Bet Tracker</h2>",
-#        unsafe_allow_html=True
-#    )
-
 # -------------------------
 # CSS / THEME
 # -------------------------
@@ -56,6 +50,8 @@ def apply_bettracker_theme():
     if css_path.exists():
         with open(css_path, "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+apply_bettracker_theme()
 
 # -------------------------
 # SHARED AUTH CONFIG FOR THIS APP
@@ -152,6 +148,24 @@ def validate_taken_odds(odds_value: str | None) -> tuple[bool, str | None, float
     odds_dec = fractional_to_decimal(normalised)
     return True, normalised, odds_dec
 
+
+def normalise_ew_flag(value) -> str:
+    if value is None:
+        return "N"
+
+    clean = str(value).strip().upper()
+    return "Y" if clean == "Y" else "N"
+
+
+def ew_flag_to_label(value) -> str:
+    return "EW" if normalise_ew_flag(value) == "Y" else "Win"
+
+
+def ew_label_to_flag(value) -> str:
+    clean = str(value).strip().upper()
+    return "Y" if clean == "EW" else "N"
+
+
 # -------------------------
 # CONNECTIONS
 # -------------------------
@@ -233,7 +247,8 @@ def insert_selection(
     user_name,
     stake=10.0,
     taken_odds=None,
-    taken_odds_dec=None
+    taken_odds_dec=None,
+    ew_bet="N"
 ):
     runner_id = str(row["runner_id"])
 
@@ -288,6 +303,7 @@ def insert_selection(
         "taken_odds": taken_odds,
         "taken_odds_dec": taken_odds_dec,
         "stake": float(stake),
+        "ew_bet": normalise_ew_flag(ew_bet),
         "created_at": created_at_utc
     }
 
@@ -397,6 +413,11 @@ st.markdown("### Selected Horses")
 if my_selections_df.empty:
     st.write("No selections yet.")
 else:
+    if "ew_bet" not in my_selections_df.columns:
+        my_selections_df["ew_bet"] = "N"
+
+    my_selections_df["ew_bet"] = my_selections_df["ew_bet"].apply(ew_flag_to_label)
+
     display_cols = [
         c for c in [
             "race_time",
@@ -406,12 +427,31 @@ else:
             "form",
             "odds",
             "taken_odds",
-            "stake"
+            "stake",
+            "ew_bet",
         ] if c in my_selections_df.columns
     ]
 
+    selected_display = my_selections_df[display_cols].copy()
+
+    rename_map = {
+        "race_time": "Race Time",
+        "race_location": "Location",
+        "race_name": "Race Name",
+        "horse_name": "Horse",
+        "form": "Form",
+        "odds": "Odds",
+        "taken_odds": "Taken Odds",
+        "stake": "Stake",
+        "ew_bet": "Bet Type",
+    }
+    selected_display = selected_display.rename(columns=rename_map)
+
+    if "Stake" in selected_display.columns:
+        selected_display["Stake"] = pd.to_numeric(selected_display["Stake"], errors="coerce").fillna(0.0)
+
     st.dataframe(
-        my_selections_df[display_cols],
+        selected_display,
         width="stretch",
         hide_index=True
     )
@@ -440,18 +480,24 @@ else:
                 runner_id = str(row["runner_id"])
                 already_selected = runner_id in selected_runner_ids
 
-                col1, col2, col3, col4, col5, col6 = st.columns([4, 2, 2, 3, 2, 1])
+                odds_value = row["Odds"] if "Odds" in row and pd.notna(row["Odds"]) else ""
+                form_value = row["Form"] if "Form" in row and pd.notna(row["Form"]) else ""
+                horse_name = str(row["HorseName"])
+
+                source_odds_normalised = normalise_odds_input(odds_value)
+                taken_odds_placeholder = "Taken odds: e.g. 9/1"
+                if source_odds_normalised:
+                    taken_odds_placeholder = f"Taken odds: {source_odds_normalised}"
+
+                col1, col2, col3, col4, col5, col6, col7 = st.columns([4.0, 1.4, 1.3, 2.6, 1.7, 1.4, 1.5])
 
                 with col1:
-                    horse_name = str(row["HorseName"])
                     st.write(f"✅ {horse_name}" if already_selected else horse_name)
 
                 with col2:
-                    form_value = row["Form"] if "Form" in row and pd.notna(row["Form"]) else ""
                     st.write(form_value)
 
                 with col3:
-                    odds_value = row["Odds"] if "Odds" in row and pd.notna(row["Odds"]) else ""
                     st.write(odds_value)
 
                 with col4:
@@ -459,33 +505,55 @@ else:
                         "Taken odds",
                         value="",
                         key=f"taken_odds_{runner_id}",
-                        placeholder="e.g. 9/1"
+                        placeholder=taken_odds_placeholder,
+                        label_visibility="collapsed"
                     )
 
                 with col5:
-                    st.write("Selected" if already_selected else "")
+                    horse_stake = st.number_input(
+                        "Stake",
+                        min_value=0.0,
+                        value=float(default_stake),
+                        step=1.0,
+                        key=f"stake_{runner_id}",
+                        label_visibility="collapsed"
+                    )
 
                 with col6:
+                    bet_type = st.selectbox(
+                        "Bet Type",
+                        options=["Win", "EW"],
+                        index=0,
+                        key=f"ew_{runner_id}",
+                        label_visibility="collapsed"
+                    )
+
+                with col7:
                     if already_selected:
-                        if st.button("Unselect", key=f"unselect_{runner_id}"):
+                        if st.button("Unselect", key=f"unselect_{runner_id}", use_container_width=True):
                             remove_selection(runner_id, user_id=user_id)
                             st.cache_data.clear()
                             st.rerun()
                     else:
-                        if st.button("Select", key=f"select_{runner_id}"):
+                        if st.button("Select", key=f"select_{runner_id}", use_container_width=True):
                             is_valid, taken_odds, taken_odds_dec = validate_taken_odds(taken_odds_input)
 
                             if not is_valid:
                                 st.warning("Taken odds must be like 9/1, 10/3, or evens.")
                             else:
+                                if taken_odds is None and source_odds_normalised is not None:
+                                    taken_odds = source_odds_normalised
+                                    taken_odds_dec = fractional_to_decimal(taken_odds)
+
                                 ok, message = insert_selection(
                                     row=row,
                                     user_id=user_id,
                                     user_email=CURRENT_USER_EMAIL,
                                     user_name=CURRENT_USER_NAME,
-                                    stake=default_stake,
+                                    stake=horse_stake,
                                     taken_odds=taken_odds,
-                                    taken_odds_dec=taken_odds_dec
+                                    taken_odds_dec=taken_odds_dec,
+                                    ew_bet=ew_label_to_flag(bet_type)
                                 )
                                 if ok:
                                     st.success(f"Saved selection: {row['HorseName']}")
