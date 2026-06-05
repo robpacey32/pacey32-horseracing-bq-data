@@ -1,7 +1,7 @@
 import os
 import requests
 from google.cloud import bigquery
-
+#tmp
 # -------------------------
 # CONFIG
 # -------------------------
