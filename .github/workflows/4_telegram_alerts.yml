@@ -1,11 +1,11 @@
 name: 4. Telegram Horse Alerts
 
 on:
-#  schedule:
-#    - cron: "32 7 * * *"
-#      timezone: "Europe/London"
-#    - cron: "32 22 * * *"
-#      timezone: "Europe/London"
+  schedule:
+    - cron: "32 7 * * *"
+      timezone: "Europe/London"
+    - cron: "32 22 * * *"
+      timezone: "Europe/London"
 
   workflow_dispatch:
     inputs:
