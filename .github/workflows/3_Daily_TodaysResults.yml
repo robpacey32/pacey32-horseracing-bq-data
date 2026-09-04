@@ -1,9 +1,6 @@
 name: 3. 🕒 Update Race Spine (Postrace @ 9pm)
 
 on:
-  schedule:
-    - cron: "0 21 * * *"
-      timezone: "Europe/London"
   workflow_dispatch:
 
 jobs:
