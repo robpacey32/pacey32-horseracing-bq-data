@@ -4,8 +4,13 @@ on:
   schedule:
     - cron: "0 3 * * *"
       timezone: "Europe/London"
-    - cron: "30 21 * * *"
-      timezone: "Europe/London"
+
+  workflow_run:
+    workflows:
+      - "3. 🕒 Update Race Spine (Postrace @ 9pm)"
+    types:
+      - completed
+
   workflow_dispatch:
 
 jobs:
