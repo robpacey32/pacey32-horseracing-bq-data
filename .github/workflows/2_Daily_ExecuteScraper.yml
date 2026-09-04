@@ -1,21 +1,24 @@
 name: 2. 🕒 Scrape Races Daily
 
 on:
-  schedule:
-    - cron: "0 3 * * *"
-      timezone: "Europe/London"
-
-  workflow_run:
-    workflows:
-      - "3. 🕒 Update Race Spine (Postrace @ 9pm)"
-    types:
-      - completed
-
   workflow_dispatch:
+    inputs:
+      scrape_type:
+        description: "Which scrape is this?"
+        required: true
+        default: "manual"
+        type: choice
+        options:
+          - morning
+          - evening
+          - manual
+
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   scrape:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -37,3 +40,12 @@ jobs:
 
       - name: Run ScrapeFromSpine.py
         run: python "2. Daily/2. ScrapeFromSpine.py"
+
+      - name: Trigger Telegram alert
+        if: ${{ success() && github.event.inputs.scrape_type != 'manual' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run 4_telegram_alerts.yml \
+            --ref main \
+            -f alert_type=${{ github.event.inputs.scrape_type }}
