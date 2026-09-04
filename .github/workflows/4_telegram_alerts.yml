@@ -1,11 +1,11 @@
 name: 4. 🕒 Telegram Horse Alerts
 
 on:
-  schedule:
-    - cron: "32 7 * * *"
-      timezone: "Europe/London"
-    - cron: "32 22 * * *"
-      timezone: "Europe/London"
+#  schedule:
+#    - cron: "32 7 * * *"
+#      timezone: "Europe/London"
+#    - cron: "32 22 * * *"
+#      timezone: "Europe/London"
 
   workflow_dispatch:
     inputs:
@@ -43,16 +43,19 @@ jobs:
 
       - name: Set alert type
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "ALERT_TYPE=${{ github.event.inputs.alert_type }}" >> $GITHUB_ENV
-          elif [ "${{ github.event.schedule }}" = "32 7 * * *" ]; then
-            echo "ALERT_TYPE=morning" >> $GITHUB_ENV
-          elif [ "${{ github.event.schedule }}" = "32 22 * * *" ]; then
-            echo "ALERT_TYPE=evening" >> $GITHUB_ENV
-          else
-            echo "Unexpected schedule value: ${{ github.event.schedule }}"
-            exit 1
-          fi
+#          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+#            echo "ALERT_TYPE=${{ github.event.inputs.alert_type }}" >> $GITHUB_ENV
+#          elif [ "${{ github.event.schedule }}" = "32 7 * * *" ]; then
+#            echo "ALERT_TYPE=morning" >> $GITHUB_ENV
+#          elif [ "${{ github.event.schedule }}" = "32 22 * * *" ]; then
+#            echo "ALERT_TYPE=evening" >> $GITHUB_ENV
+#          else
+#            echo "Unexpected schedule value: ${{ github.event.schedule }}"
+#            exit 1
+#          fi
+          echo "ALERT_TYPE=${{ github.event.inputs.alert_type }}" >> $GITHUB_ENV
+
+
 
       - name: Send Telegram alert
         env:
