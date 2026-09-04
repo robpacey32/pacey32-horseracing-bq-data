@@ -1,10 +1,11 @@
 name: 1. 🕒 Create Race Spine (Prerace @ 2am)
 
 on:
-  schedule:
-    - cron: "0 2 * * *"
-      timezone: "Europe/London"
   workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   spine-races:
@@ -29,3 +30,12 @@ jobs:
 
       - name: Run RaceSpineCreation_Races.py
         run: python "2. Daily/1b. RaceSpineCreation_Races.py"
+
+      - name: Trigger morning scraper
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run 2_Daily_ExecuteScraper.yml \
+            --ref main \
+            -f scrape_type=manual
