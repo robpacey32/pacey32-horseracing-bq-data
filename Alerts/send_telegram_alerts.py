@@ -120,8 +120,10 @@ def build_evening_message():
     """
     rows = run_query(query)
 
+    # No selections were sent this morning, so there is nothing
+    # to report in the evening.
     if not rows:
-        return "📊 Today's Results\n\nNo results found."
+        return None
 
     lines = ["📊 Today's Results", ""]
 
@@ -148,6 +150,11 @@ def main():
         message = build_evening_message()
     else:
         raise ValueError("ALERT_TYPE must be 'morning' or 'evening'")
+
+    # Nothing was selected this morning, so don't send an evening alert.
+    if message is None:
+        print("No morning selections found. Skipping evening Telegram alert.")
+        return
 
     users = get_active_users()
 
