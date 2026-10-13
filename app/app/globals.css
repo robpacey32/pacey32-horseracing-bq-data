@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+:root {
+  --racing-green: #003b2a;
+  --racing-green-dark: #00291e;
+  --racing-green-light: #e2e9df;
+
+  --racing-gold: #b08d3b;
+  --racing-gold-dark: #8f7029;
+  --racing-gold-light: #eee3c7;
+
+  --racing-ivory: #f7f2e7;
+  --racing-parchment: #ede4d2;
+  --racing-paper: #fbf8f1;
+
+  --racing-ink: #17211c;
+  --racing-muted: #687169;
+  --racing-border: #d9cfbb;
+
+  --background: var(--racing-ivory);
+  --foreground: var(--racing-ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--racing-ivory);
+}
+
+body {
+  margin: 0;
+  background: var(--racing-ivory);
+  color: var(--racing-ink);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+.racing-serif {
+  font-family:
+    var(--font-cormorant),
+    Georgia,
+    "Times New Roman",
+    serif;
+}
+
+.racing-small-caps {
+  font-family:
+    var(--font-inter),
+    Arial,
+    sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+::selection {
+  background: var(--racing-gold-light);
+  color: var(--racing-green-dark);
+}
