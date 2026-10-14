@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRaceDates, getRacesForDate } from "@/lib/raceViewer";
+import { unstable_rethrow } from "next/navigation";
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
       races,
     });
   } catch (error) {
+    unstable_rethrow(error);
+    
     console.error("Race Viewer API error:", error);
 
     const message =

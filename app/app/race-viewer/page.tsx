@@ -1692,13 +1692,13 @@ export default function RaceViewerPage() {
               <div className="absolute left-4 right-4 top-[calc(100%-6px)] z-40 rounded border border-[var(--racing-gold)] bg-[var(--racing-green-dark)] p-3 shadow-2xl">
                 <div className="mb-3 flex items-center justify-between">
                   <button type="button" aria-label="Previous month"
-                    onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+                    onClick={() => setCalendarMonth((month) => month ? new Date(month.getFullYear(), month.getMonth() - 1, 1) : month)}
                     className="rounded px-2 py-1 text-lg text-[var(--racing-gold-light)] hover:bg-white/10">‹</button>
                   <span className="racing-serif text-[17px] font-semibold text-white">
                     {new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(calendarMonth)}
                   </span>
                   <button type="button" aria-label="Next month"
-                    onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+                    onClick={() => setCalendarMonth((month) => month ? new Date(month.getFullYear(), month.getMonth() + 1, 1) : month)}
                     className="rounded px-2 py-1 text-lg text-[var(--racing-gold-light)] hover:bg-white/10">›</button>
                 </div>
                 <div className="grid grid-cols-7 gap-1 text-center">
