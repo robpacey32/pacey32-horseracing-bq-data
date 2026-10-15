@@ -8,14 +8,34 @@ type StakeAllocation = "per_horse" | "per_race";
 type StakeMode = "total" | "per_leg";
 
 interface ScenarioFilters {
+  // Betting
   minOdds?: number;
   maxOdds?: number;
+  minPreRaceRank?: number;
   maxPreRaceRank?: number;
+  favouriteStatus?: "favourite" | "not_favourite";
+
+  // Race
   raceType?: string;
   course?: string;
+  raceClass?: string;
+  going?: string;
+  surface?: string;
+  minDistance?: number;
+  maxDistance?: number;
   handicap?: boolean;
+
+  // Horse history
+  courseWinner?: boolean;
+  distanceWinner?: boolean;
+  courseDistanceWinner?: boolean;
+
+  // Recent form
   wonInLast3?: boolean;
   win2InLast6?: boolean;
+
+  // Each-way
+  eachWayEligible?: boolean;
 }
 
 interface ScenarioRequest {
@@ -40,6 +60,10 @@ interface DailyRow {
 const TABLE =
   "`horseracing-pacey32-github.horseraceanalytics.Scenario_App_Data_vw`";
 
+// --------------------------------------------------
+// Helpers
+// --------------------------------------------------
+
 function isValidDate(value: unknown): value is string {
   if (typeof value !== "string") return false;
 
@@ -61,8 +85,15 @@ function isFiniteNumber(value: unknown): value is number {
 
 function round(value: number, decimals = 2): number {
   const factor = 10 ** decimals;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
+
+  return (
+    Math.round((value + Number.EPSILON) * factor) / factor
+  );
 }
+
+// --------------------------------------------------
+// POST: Calculate scenario
+// --------------------------------------------------
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,7 +110,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // --------------------------------------------------
-    // Validate request
+    // 1. Validate request
     // --------------------------------------------------
 
     if (!isValidDate(startDate) || !isValidDate(endDate)) {
@@ -96,14 +127,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isFiniteNumber(stake) || stake <= 0 || stake > 100000) {
+    if (
+      !isFiniteNumber(stake) ||
+      stake <= 0 ||
+      stake > 100000
+    ) {
       return NextResponse.json(
-        { error: "Stake must be between 0 and 100,000." },
+        {
+          error: "Stake must be between 0 and 100,000.",
+        },
         { status: 400 }
       );
     }
 
-    if (betType !== "win" && betType !== "each_way") {
+    if (
+      betType !== "win" &&
+      betType !== "each_way"
+    ) {
       return NextResponse.json(
         { error: "Invalid bet type." },
         { status: 400 }
@@ -120,7 +160,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (stakeMode !== "total" && stakeMode !== "per_leg") {
+    if (
+      stakeMode !== "total" &&
+      stakeMode !== "per_leg"
+    ) {
       return NextResponse.json(
         { error: "Invalid stake mode." },
         { status: 400 }
@@ -128,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------------------------
-    // Build parameterised scenario filters
+    // 2. Base conditions
     // --------------------------------------------------
 
     const conditions: string[] = [
@@ -138,16 +181,29 @@ export async function POST(request: NextRequest) {
       "Result_Position IS NOT NULL",
     ];
 
-    const params: Record<string, string | number | boolean> = {
+    const params: Record<
+      string,
+      string | number | boolean
+    > = {
       startDate,
       endDate,
       stake,
     };
 
+    // --------------------------------------------------
+    // 3. Numeric filters
+    // --------------------------------------------------
+
     const numericFilters: Array<{
-      key: keyof ScenarioFilters;
+      key:
+        | "minOdds"
+        | "maxOdds"
+        | "minPreRaceRank"
+        | "maxPreRaceRank"
+        | "minDistance"
+        | "maxDistance";
       column: string;
-      operator: string;
+      operator: ">=" | "<=";
     }> = [
       {
         key: "minOdds",
@@ -160,8 +216,23 @@ export async function POST(request: NextRequest) {
         operator: "<=",
       },
       {
+        key: "minPreRaceRank",
+        column: "PreRaceRank",
+        operator: ">=",
+      },
+      {
         key: "maxPreRaceRank",
         column: "PreRaceRank",
+        operator: "<=",
+      },
+      {
+        key: "minDistance",
+        column: "Distance_Furlongs",
+        operator: ">=",
+      },
+      {
+        key: "maxDistance",
+        column: "Distance_Furlongs",
         operator: "<=",
       },
     ];
@@ -173,7 +244,9 @@ export async function POST(request: NextRequest) {
 
       if (!isFiniteNumber(value)) {
         return NextResponse.json(
-          { error: `Invalid filter: ${filter.key}` },
+          {
+            error: `Invalid filter: ${filter.key}`,
+          },
           { status: 400 }
         );
       }
@@ -185,9 +258,15 @@ export async function POST(request: NextRequest) {
       params[filter.key] = value;
     }
 
+    // --------------------------------------------------
+    // 4. Race type
+    // --------------------------------------------------
+
     if (filters.raceType !== undefined) {
       if (
-        !["Flat", "Jumps", "Unknown"].includes(filters.raceType)
+        !["Flat", "Jumps", "Unknown"].includes(
+          filters.raceType
+        )
       ) {
         return NextResponse.json(
           { error: "Invalid race type." },
@@ -195,13 +274,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      conditions.push("Pre_RaceType = @raceType");
+      conditions.push(
+        "Pre_RaceType = @raceType"
+      );
+
       params.raceType = filters.raceType;
     }
+
+    // --------------------------------------------------
+    // 5. Course
+    // --------------------------------------------------
 
     if (filters.course !== undefined) {
       if (
         typeof filters.course !== "string" ||
+        filters.course.trim().length === 0 ||
         filters.course.length > 100
       ) {
         return NextResponse.json(
@@ -214,16 +301,99 @@ export async function POST(request: NextRequest) {
         "LOWER(Pre_RaceLocation) = LOWER(@course)"
       );
 
-      params.course = filters.course;
+      params.course = filters.course.trim();
     }
 
-    const booleanFilters: Array<{
-      key: keyof ScenarioFilters;
+    // --------------------------------------------------
+    // 6. Race classification
+    // --------------------------------------------------
+
+    const textFilters: Array<{
+      key: "raceClass" | "going" | "surface";
       column: string;
     }> = [
-      { key: "handicap", column: "HandicappedRace" },
-      { key: "wonInLast3", column: "WonInLast3" },
-      { key: "win2InLast6", column: "Win2InLast6" },
+      {
+        key: "raceClass",
+        column: "Pre_RaceClass",
+      },
+      {
+        key: "going",
+        column: "Pre_RaceGoing",
+      },
+      {
+        key: "surface",
+        column: "Pre_RaceSurface",
+      },
+    ];
+
+    for (const filter of textFilters) {
+      const value = filters[filter.key];
+
+      if (value === undefined) continue;
+
+      if (
+        typeof value !== "string" ||
+        value.trim().length === 0 ||
+        value.length > 100
+      ) {
+        return NextResponse.json(
+          {
+            error: `Invalid filter: ${filter.key}`,
+          },
+          { status: 400 }
+        );
+      }
+
+      conditions.push(
+        `LOWER(${filter.column}) = LOWER(@${filter.key})`
+      );
+
+      params[filter.key] = value.trim();
+    }
+
+    // --------------------------------------------------
+    // 7. Boolean filters
+    // --------------------------------------------------
+
+    const booleanFilters: Array<{
+      key:
+        | "handicap"
+        | "wonInLast3"
+        | "win2InLast6"
+        | "courseWinner"
+        | "distanceWinner"
+        | "courseDistanceWinner"
+        | "eachWayEligible";
+      column: string;
+    }> = [
+      {
+        key: "handicap",
+        column: "HandicappedRace",
+      },
+      {
+        key: "wonInLast3",
+        column: "WonInLast3",
+      },
+      {
+        key: "win2InLast6",
+        column: "Win2InLast6",
+      },
+      {
+        key: "courseWinner",
+        column: "RHS_C",
+      },
+      {
+        key: "distanceWinner",
+        column: "RHS_D",
+      },
+      {
+        key: "courseDistanceWinner",
+        column: "RHS_CD",
+      },
+      {
+        key: "eachWayEligible",
+        column: "ew_possible",
+      },
     ];
 
     for (const filter of booleanFilters) {
@@ -233,25 +403,61 @@ export async function POST(request: NextRequest) {
 
       if (typeof value !== "boolean") {
         return NextResponse.json(
-          { error: `Invalid filter: ${filter.key}` },
+          {
+            error: `Invalid filter: ${filter.key}`,
+          },
           { status: 400 }
         );
       }
 
-      conditions.push(`${filter.column} = @${filter.key}`);
+      conditions.push(
+        `${filter.column} = @${filter.key}`
+      );
+
       params[filter.key] = value;
     }
 
     // --------------------------------------------------
-    // Stake configuration
+    // 8. Favourite status
     // --------------------------------------------------
 
-    // For each-way:
-    // total mode: £10 means £5 win + £5 place
-    // per_leg mode: £10 means £10 win + £10 place
+    if (filters.favouriteStatus !== undefined) {
+      if (
+        filters.favouriteStatus !== "favourite" &&
+        filters.favouriteStatus !== "not_favourite"
+      ) {
+        return NextResponse.json(
+          {
+            error: "Invalid favourite status.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (
+        filters.favouriteStatus === "favourite"
+      ) {
+        conditions.push("PreRaceRank = 1");
+      } else {
+        conditions.push("PreRaceRank > 1");
+      }
+    }
+
+    // --------------------------------------------------
+    // 9. Stake configuration
+    // --------------------------------------------------
+
+    // Each-way:
+    //
+    // total:
+    //   10 = 5 win + 5 place
+    //
+    // per_leg:
+    //   10 = 10 win + 10 place
 
     const totalStake =
-      betType === "each_way" && stakeMode === "per_leg"
+      betType === "each_way" &&
+      stakeMode === "per_leg"
         ? stake * 2
         : stake;
 
@@ -274,7 +480,7 @@ export async function POST(request: NextRequest) {
         : "1";
 
     // --------------------------------------------------
-    // BigQuery calculation
+    // 10. BigQuery calculation
     // --------------------------------------------------
 
     const query = `
@@ -339,7 +545,12 @@ export async function POST(request: NextRequest) {
           Result_Position = 1 AS is_winner,
 
           win_stake
-            + IF(@placeLegStake > 0 AND ew_possible, place_stake, 0)
+            + IF(
+                @placeLegStake > 0
+                AND ew_possible,
+                place_stake,
+                0
+              )
             AS amount_staked,
 
           IF(
@@ -380,8 +591,13 @@ export async function POST(request: NextRequest) {
       FROM settled
 
       GROUP BY RaceDateDt
+
       ORDER BY RaceDateDt
     `;
+
+    // --------------------------------------------------
+    // 11. Execute BigQuery
+    // --------------------------------------------------
 
     const bigquery = getBigQueryClient();
 
@@ -392,7 +608,7 @@ export async function POST(request: NextRequest) {
     });
 
     // --------------------------------------------------
-    // Build daily performance
+    // 12. Build daily performance
     // --------------------------------------------------
 
     let cumulativeProfit = 0;
@@ -406,20 +622,26 @@ export async function POST(request: NextRequest) {
     let totalStaked = 0;
     let totalReturns = 0;
 
-    const dailyPerformance = (rows as DailyRow[]).map((row) => {
+    const dailyPerformance = (
+      rows as DailyRow[]
+    ).map((row) => {
       const profit = Number(row.profit);
       const staked = Number(row.staked);
       const returns = Number(row.returns);
 
       totalBets += Number(row.bets);
       totalWinners += Number(row.winners);
+
       totalStaked += staked;
       totalReturns += returns;
 
       cumulativeProfit += profit;
       cumulativeStaked += staked;
 
-      peakProfit = Math.max(peakProfit, cumulativeProfit);
+      peakProfit = Math.max(
+        peakProfit,
+        cumulativeProfit
+      );
 
       maxDrawdown = Math.max(
         maxDrawdown,
@@ -428,48 +650,69 @@ export async function POST(request: NextRequest) {
 
       return {
         date: row.date,
+
         bets: Number(row.bets),
         winners: Number(row.winners),
+
         staked: round(staked),
         returns: round(returns),
         profit: round(profit),
-        cumulativeProfit: round(cumulativeProfit),
+
+        cumulativeProfit: round(
+          cumulativeProfit
+        ),
+
         cumulativeROI:
           cumulativeStaked > 0
             ? round(
-                (cumulativeProfit / cumulativeStaked) * 100
+                (cumulativeProfit /
+                  cumulativeStaked) *
+                  100
               )
             : 0,
       };
     });
 
-    const profit = totalReturns - totalStaked;
+    // --------------------------------------------------
+    // 13. Summary
+    // --------------------------------------------------
+
+    const profit =
+      totalReturns - totalStaked;
+
+    const summary = {
+      bets: totalBets,
+      winners: totalWinners,
+
+      strikeRate:
+        totalBets > 0
+          ? round(
+              (totalWinners / totalBets) *
+                100
+            )
+          : 0,
+
+      staked: round(totalStaked),
+      returns: round(totalReturns),
+      profit: round(profit),
+
+      roi:
+        totalStaked > 0
+          ? round(
+              (profit / totalStaked) *
+                100
+            )
+          : 0,
+
+      maxDrawdown: round(maxDrawdown),
+    };
 
     // --------------------------------------------------
-    // Response
+    // 14. Response
     // --------------------------------------------------
 
     return NextResponse.json({
-      summary: {
-        bets: totalBets,
-        winners: totalWinners,
-
-        strikeRate:
-          totalBets > 0
-            ? round((totalWinners / totalBets) * 100)
-            : 0,
-
-        staked: round(totalStaked),
-        returns: round(totalReturns),
-        profit: round(profit),
-
-        roi:
-          totalStaked > 0
-            ? round((profit / totalStaked) * 100)
-            : 0,
-
-        maxDrawdown: round(maxDrawdown),
-      },
+      summary,
 
       dailyPerformance,
 
@@ -483,14 +726,18 @@ export async function POST(request: NextRequest) {
         filters,
       },
     });
-
   } catch (error) {
     unstable_rethrow(error);
 
-    console.error("Scenario calculation error:", error);
+    console.error(
+      "Scenario calculation error:",
+      error
+    );
 
     return NextResponse.json(
-      { error: "Failed to calculate scenario." },
+      {
+        error: "Failed to calculate scenario.",
+      },
       { status: 500 }
     );
   }
