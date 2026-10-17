@@ -1,0 +1,45 @@
+name: 5. Repair Historical Pre-Race Conditions
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'First date (YYYY-MM-DD), e.g. 2026-01-21'
+        required: true
+        type: string
+      end_date:
+        description: 'Last date (YYYY-MM-DD); leave blank for one day'
+        required: false
+        type: string
+      apply_changes:
+        description: 'Append corrected full horse records? False = read-only test'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Write GCP credentials
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > key.json
+      - name: Test or repair selected dates
+        env:
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+          APPLY_CHANGES: ${{ inputs.apply_changes }}
+        run: |
+          args=(--date "$START_DATE")
+          if [ -n "$END_DATE" ]; then args+=(--end-date "$END_DATE"); fi
+          if [ "$APPLY_CHANGES" = "true" ]; then args+=(--apply); fi
+          python '1. History/5. RepairPreRaceConditions.py' "${args[@]}"
