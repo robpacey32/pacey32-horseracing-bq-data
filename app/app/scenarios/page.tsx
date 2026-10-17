@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import ScenarioChart from "@/components/scenarios/ScenarioChart";
 import ScenarioSelections from "@/components/scenarios/ScenarioSelections";
 import SavedScenarios from "@/components/scenarios/SavedScenarios";
+import ModelledScenarios from "@/components/scenarios/ModelledScenarios";
 
 import type {
   ComparedScenario,
@@ -91,51 +92,118 @@ function Field({
   );
 }
 
-function BooleanSelect({
-  value,
-  onChange,
-}: {
+function ChoiceSwitch({ value, onChange, labels = ["Include", "Only", "Exclude"] }: {
   value: BooleanChoice;
   onChange: (value: BooleanChoice) => void;
+  labels?: [string, string, string];
 }) {
   return (
-    <select
-      value={value}
-      onChange={(event) =>
-        onChange(event.target.value as BooleanChoice)
-      }
-      className="w-full rounded-lg border border-gray-300 px-3 py-2"
-    >
-      <option value="any">Any</option>
-      <option value="yes">Yes</option>
-      <option value="no">No</option>
-    </select>
+    <div className="inline-flex max-w-full rounded-lg border border-gray-300 bg-gray-50 p-1">
+      {(["any", "yes", "no"] as const).map((option, index) => (
+        <button key={option} type="button" onClick={() => onChange(option)}
+          aria-pressed={value === option}
+          className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${value === option ? "bg-[#123d2d] text-white" : "text-gray-600 hover:bg-white"}`}>
+          {labels[index]}
+        </button>
+      ))}
+    </div>
   );
 }
 
-function FilterSection({
-  title,
-  children,
-  defaultOpen = false,
-}: {
-  title: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
+function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <details
-      open={defaultOpen ? true : undefined}
-      className="rounded-lg border border-gray-200 bg-white"
-    >
-      <summary className="cursor-pointer px-4 py-3 font-semibold">
-        {title}
-      </summary>
-
-      <div className="grid grid-cols-1 gap-5 border-t border-gray-200 p-4 sm:grid-cols-2 lg:grid-cols-4">
-        {children}
-      </div>
+    <details className="rounded-lg border border-gray-200 bg-white">
+      <summary className="cursor-pointer px-4 py-3 font-semibold">{title}</summary>
+      <div className="grid grid-cols-1 gap-4 border-t border-gray-200 p-4 md:grid-cols-2 xl:grid-cols-3">{children}</div>
     </details>
   );
+}
+
+function RangeField({ title, min, max, setMin, setMax, step = "1", hint }: {
+  title: string; min: string; max: string;
+  setMin: (value: string) => void; setMax: (value: string) => void;
+  step?: string; hint?: string;
+}) {
+  return (
+    <div className="text-sm">
+      <div className="mb-2 font-medium">{title}</div>
+      <div className="grid grid-cols-2 gap-2">
+        <label><span className="mb-1 block text-xs text-gray-500">Min</span><input type="number" step={step} value={min} onChange={e => setMin(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
+        <label><span className="mb-1 block text-xs text-gray-500">Max</span><input type="number" step={step} value={max} onChange={e => setMax(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" /></label>
+      </div>
+      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+    </div>
+  );
+}
+
+function MultiSelectDropdown({ title, options, selected, onChange, loading = false }: {
+  title: string;
+  options: string[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  loading?: boolean;
+}) {
+  const [search, setSearch] = useState("");
+  const values = Array.from(new Set([...options, ...selected]));
+  const visible = values.filter(value => value.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const toggle = (value: string) => onChange(selected.includes(value)
+    ? selected.filter(item => item !== value)
+    : [...selected, value]);
+  return (
+    <div className="min-w-0 text-sm">
+      <p className="mb-2 font-medium">{title}</p>
+      <details className="group relative rounded-lg border border-gray-300 bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 marker:hidden [&::-webkit-details-marker]:hidden">
+          <span className="truncate">{selected.length === 0 ? "All" : `${selected.length} selected`}</span>
+          <span className="text-gray-500 group-open:rotate-180">▾</span>
+        </summary>
+        <div className="absolute left-0 right-0 top-full z-30 mt-1 rounded-lg border border-gray-300 bg-white p-3 shadow-xl">
+          <input type="search" value={search} onChange={event => setSearch(event.target.value)}
+            placeholder={`Search ${title.toLowerCase()}…`} aria-label={`Search ${title}`}
+            className="mb-2 w-full rounded-md border border-gray-300 px-2 py-1.5" />
+          <div className="mb-2 flex justify-between text-xs">
+            <button type="button" onClick={() => onChange(values)} className="font-medium text-[#123d2d] hover:underline">Select all</button>
+            <button type="button" onClick={() => onChange([])} className="text-gray-600 hover:underline">Clear all</button>
+          </div>
+          <div className="max-h-56 space-y-1 overflow-y-auto">
+            {visible.map(value => <label key={value} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-gray-50">
+              <input type="checkbox" checked={selected.includes(value)} onChange={() => toggle(value)} className="accent-[#123d2d]" />
+              <span>{value}</span>
+            </label>)}
+            {!visible.length && <p className="text-xs text-gray-500">{loading ? "Loading options…" : "No matching values"}</p>}
+          </div>
+        </div>
+      </details>
+      <p className="mt-1 text-xs text-gray-500">None selected = all included</p>
+    </div>
+  );
+}
+
+function MultiCheckbox({title, options, selected, onChange}: {title:string; options:string[]; selected:string[]; onChange:(items:string[])=>void}) {
+  return <div className="text-sm"><p className="mb-2 font-medium">{title}</p>
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 grid grid-cols-2 gap-2">
+      {options.map(option => <label key={option} className="flex items-center gap-2 text-xs cursor-pointer">
+        <input type="checkbox" checked={selected.includes(option)} onChange={e => onChange(e.target.checked ? [...selected,option] : selected.filter(v=>v!==option))} className="accent-[#123d2d]" />{option}
+      </label>)}
+    </div><p className="mt-1 text-xs text-gray-500">None selected = all included</p>
+  </div>;
+}
+
+const COURSES = ["Aintree", "Ascot", "Ayr", "Bangor", "Bath", "Beverley", "Brighton", "Carlisle", "Cartmel", "Catterick", "Chelmsford", "Cheltenham", "Chepstow", "Chester", "Clonmel", "Curragh", "Doncaster", "Dundalk", "Epsom", "Exeter", "Fairyhouse", "Ffos Las", "Fontwell", "Galway", "Goodwood", "Hamilton", "Haydock", "Hexham", "Huntingdon", "Kempton", "Leicester", "Leopardstown", "Limerick", "Lingfield", "Listowel", "Ludlow", "Market Rasen", "Musselburgh", "Naas", "Navan", "Newbury", "Newcastle", "Newmarket", "Nottingham", "Perth", "Pontefract", "Punchestown", "Redcar", "Ripon", "Roscommon", "Salisbury", "Sandown", "Sedgefield", "Southwell", "Stratford", "Taunton", "Thirsk", "Thurles", "Tipperary", "Uttoxeter", "Warwick", "Wetherby", "Wincanton", "Windsor", "Wolverhampton", "Worcester", "Yarmouth", "York"];
+const GOINGS = ["Heavy", "Soft To Heavy", "Soft", "Yielding To Soft", "Yielding", "Good To Soft", "Good", "Good To Firm", "Firm", "Fast", "Standard To Slow", "Standard"];
+const CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"];
+const SURFACES = ["Turf", "All Weather", "All-Weather", "AW", "Tapeta", "Polytrack", "Fibresand", "Dirt", "Grass"];
+
+function orderedGoings(values: string[]): string[] {
+  const order = GOINGS.map(value => value.toLowerCase());
+  return [...values].sort((a, b) => {
+    const ai = order.indexOf(a.toLowerCase());
+    const bi = order.indexOf(b.toLowerCase());
+    if (ai < 0 && bi < 0) return a.localeCompare(b);
+    if (ai < 0) return 1;
+    if (bi < 0) return -1;
+    return ai - bi;
+  });
 }
 
 export default function ScenariosPage() {
@@ -154,6 +222,18 @@ export default function ScenariosPage() {
 
     setStartDate(start.toISOString().slice(0, 10));
     setEndDate(today.toISOString().slice(0, 10));
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/scenarios/options", { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("Could not load filter options");
+        return response.json();
+      })
+      .then(data => setFilterOptions(data))
+      .catch(error => { if (error.name !== "AbortError") setOptionsError(true); });
+    return () => controller.abort();
   }, []);
 
   // --------------------------------------------------
@@ -194,11 +274,13 @@ export default function ScenariosPage() {
   // Race filters
   // --------------------------------------------------
 
-  const [raceType, setRaceType] = useState("Flat");
-  const [course, setCourse] = useState("");
-  const [raceClass, setRaceClass] = useState("");
-  const [going, setGoing] = useState("");
-  const [surface, setSurface] = useState("");
+  const [raceTypes, setRaceTypes] = useState<string[]>(["Flat"]);
+  const [courses, setCourses] = useState<string[]>([]);
+  const [raceClasses, setRaceClasses] = useState<string[]>([]);
+  const [filterOptions, setFilterOptions] = useState<{ courses: string[]; raceClasses: string[]; goings: string[]; surfaces: string[] } | null>(null);
+  const [optionsError, setOptionsError] = useState(false);
+  const [goings, setGoings] = useState<string[]>([]);
+  const [surfaces, setSurfaces] = useState<string[]>([]);
 
   const [minDistance, setMinDistance] = useState("");
   const [maxDistance, setMaxDistance] = useState("");
@@ -218,6 +300,8 @@ export default function ScenariosPage() {
 
   const [courseDistanceWinner, setCourseDistanceWinner] =
     useState<BooleanChoice>("any");
+
+  const [beatenFavourite, setBeatenFavourite] = useState<BooleanChoice>("any");
 
   // --------------------------------------------------
   // Recent form
@@ -297,25 +381,14 @@ export default function ScenariosPage() {
       }
 
       // Text filters
-      if (raceType !== "All") {
-        filters.raceType = raceType;
-      }
+      if (raceTypes.length) filters.raceTypes = raceTypes;
 
-      if (course.trim()) {
-        filters.course = course.trim();
-      }
+      if (courses.length) filters.courses = courses;
+      if (raceClasses.length) filters.raceClasses = raceClasses;
 
-      if (raceClass.trim()) {
-        filters.raceClass = raceClass.trim();
-      }
+      if (goings.length) filters.goings = goings;
 
-      if (going.trim()) {
-        filters.going = going.trim();
-      }
-
-      if (surface.trim()) {
-        filters.surface = surface.trim();
-      }
+      if (surfaces.length) filters.surfaces = surfaces;
 
       // Favourite status
       if (favouriteStatus !== "any") {
@@ -326,6 +399,7 @@ export default function ScenariosPage() {
       const booleanValues = {
         handicap: optionalBoolean(handicap),
         courseWinner: optionalBoolean(courseWinner),
+        beatenFavourite: optionalBoolean(beatenFavourite),
         distanceWinner: optionalBoolean(distanceWinner),
         courseDistanceWinner: optionalBoolean(
           courseDistanceWinner
@@ -483,11 +557,11 @@ export default function ScenariosPage() {
     );
 
     // Race filters
-    setRaceType(filters.raceType ?? "All");
-    setCourse(filters.course ?? "");
-    setRaceClass(filters.raceClass ?? "");
-    setGoing(filters.going ?? "");
-    setSurface(filters.surface ?? "");
+    setRaceTypes(filters.raceTypes ?? (filters.raceType ? [filters.raceType] : []));
+    setCourses(filters.courses ?? (filters.course ? [filters.course] : []));
+    setRaceClasses(filters.raceClasses ?? (filters.raceClass ? [filters.raceClass] : []));
+    setGoings(filters.goings ?? (filters.going ? [filters.going] : []));
+    setSurfaces(filters.surfaces ?? (filters.surface ? [filters.surface] : []));
 
     setMinDistance(
       filters.minDistance?.toString() ?? ""
@@ -503,6 +577,7 @@ export default function ScenariosPage() {
     setCourseWinner(
       toBooleanChoice(filters.courseWinner)
     );
+    setBeatenFavourite(toBooleanChoice(filters.beatenFavourite));
 
     setDistanceWinner(
       toBooleanChoice(filters.distanceWinner)
@@ -543,457 +618,75 @@ export default function ScenariosPage() {
     >
       <div className="mx-auto max-w-7xl">
 
-        {/* Page heading */}
-        <div className="mb-8">
-          <p
-            className="text-xs font-semibold uppercase tracking-[0.25em]"
-            style={{
-              color: "var(--racing-gold-dark, #9c792e)",
-            }}
-          >
-            Pacey32 Analytics
-          </p>
+        <header className="mb-5 rounded-xl bg-[#003b2b] px-6 py-5 text-white shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#d7bf76]">Pacey32 Analytics</p>
+          <h1 className="mt-1 font-serif text-3xl font-semibold md:text-4xl">Scenarios</h1>
+          <p className="mt-1 text-sm text-white/75">Build, evaluate and compare horse racing strategies.</p>
+        </header>
 
-          <h1
-            className="mt-2 font-serif text-4xl font-semibold"
-            style={{
-              color: "var(--racing-green-dark, #123d2d)",
-            }}
-          >
-            Scenarios
-          </h1>
-
-          <p className="mt-3 text-sm text-gray-600">
-            Build, evaluate and compare historical horse racing
-            betting strategies.
-          </p>
-        </div>
-
-        {/* --------------------------------------------------
-            Scenario Builder
-        -------------------------------------------------- */}
-
-        <section
-          className="mb-7 rounded-xl border bg-white p-6 shadow-sm"
-          style={{
-            borderColor: "var(--racing-border, #ded8c9)",
-          }}
-        >
-          <div className="mb-5 flex items-center justify-between">
-            <h2
-              className="font-serif text-2xl"
-              style={{
-                color: "var(--racing-green-dark, #123d2d)",
-              }}
-            >
-              Scenario Builder
-            </h2>
-
-            <span className="text-sm text-gray-500">
-              {comparedScenarios.length} / 4 scenarios
-            </span>
-          </div>
-
-          {/* Core settings */}
-
-          <div className="mb-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-
+        <details className="mb-5 overflow-hidden rounded-xl border border-[#ded8c9] bg-white shadow-sm">
+          <summary className="cursor-pointer bg-[#f8f7f2] px-5 py-4 font-serif text-2xl text-[#123d2d]">
+            Scenario Builder <span className="float-right pt-2 font-sans text-xs text-gray-500">{comparedScenarios.length} / 4 compared</span>
+          </summary>
+          <div className="space-y-5 border-t border-[#ded8c9] p-5">
             <Field label="Scenario name">
-              <input
-                value={scenarioName}
-                onChange={(e) =>
-                  setScenarioName(e.target.value)
-                }
-                maxLength={80}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-              />
+              <input value={scenarioName} onChange={e => setScenarioName(e.target.value)} maxLength={80} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
             </Field>
-
-            <Field label="Start date">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) =>
-                  setStartDate(e.target.value)
-                }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-              />
-            </Field>
-
-            <Field label="End date">
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) =>
-                  setEndDate(e.target.value)
-                }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-              />
-            </Field>
-
-            <Field label="Stake">
-              <input
-                type="number"
-                min="0.01"
-                step="0.5"
-                value={stake}
-                onChange={(e) =>
-                  setStake(Number(e.target.value))
-                }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-              />
-            </Field>
-
-            <Field label="Bet type">
-              <select
-                value={betType}
-                onChange={(e) =>
-                  setBetType(
-                    e.target.value as "win" | "each_way"
-                  )
-                }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-              >
-                <option value="win">Win</option>
-                <option value="each_way">Each-way</option>
-              </select>
-            </Field>
-
-            <Field label="Stake allocation">
-              <select
-                value={stakeAllocation}
-                onChange={(e) =>
-                  setStakeAllocation(
-                    e.target.value as
-                      | "per_horse"
-                      | "per_race"
-                  )
-                }
-                className="w-full rounded-lg border border-gray-300 px-3 py-2"
-              >
-                <option value="per_horse">
-                  Per horse
-                </option>
-                <option value="per_race">
-                  Per race
-                </option>
-              </select>
-            </Field>
-
-            <Field label="Stake mode">
-              <select
-                value={stakeMode}
-                onChange={(e) =>
-                  setStakeMode(
-                    e.target.value as
-                      | "total"
-                      | "per_leg"
-                  )
-                }
-                disabled={betType === "win"}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:opacity-50"
-              >
-                <option value="total">
-                  Total stake
-                </option>
-                <option value="per_leg">
-                  Per leg
-                </option>
-              </select>
-            </Field>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <Field label="Start date"><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-2" /></Field>
+              <Field label="End date"><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-2" /></Field>
+              <Field label="Stake (£)"><input type="number" min="0.01" step="0.5" value={stake} onChange={e => setStake(Number(e.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2" /></Field>
+              <Field label="Bet type"><select value={betType} onChange={e => setBetType(e.target.value as "win" | "each_way")} className="w-full rounded-lg border border-gray-300 px-3 py-2"><option value="win">Win</option><option value="each_way">Each-way</option></select></Field>
+              <Field label="Stake distribution"><select value={stakeAllocation} onChange={e => setStakeAllocation(e.target.value as "per_horse" | "per_race")} className="w-full rounded-lg border border-gray-300 px-2 py-2"><option value="per_horse">Full stake per horse</option><option value="per_race">Split stake across horses</option></select></Field>
+              <Field label="Stake mode"><select value={stakeMode} onChange={e => setStakeMode(e.target.value as "total" | "per_leg")} disabled={betType === "win"} className="w-full rounded-lg border border-gray-300 px-2 py-2 disabled:opacity-50"><option value="total">Total stake</option><option value="per_leg">Per leg</option></select></Field>
+            </div>
+            <p className="text-xs text-gray-500">Stake distribution: full stake per qualifying horse, or one total race stake shared between all qualifying horses. Neither option restricts selections to one horse per race.</p>
+            <div className="space-y-2">
+              <FilterSection title="Betting Conditions">
+                <RangeField title="Odds (decimal)" min={minOdds} max={maxOdds} setMin={setMinOdds} setMax={setMaxOdds} step="0.1" />
+                <RangeField title="Horse odds rank" min={minPreRaceRank} max={maxPreRaceRank} setMin={setMinPreRaceRank} setMax={setMaxPreRaceRank} hint="Rank 1 = shortest-priced horse (favourite)." />
+                <div><p className="mb-2 text-sm font-medium">Favourites</p><div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1">{(["any", "favourite", "not_favourite"] as const).map((v, i) => <button key={v} type="button" aria-pressed={favouriteStatus === v} onClick={() => setFavouriteStatus(v)} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${favouriteStatus === v ? "bg-[#123d2d] text-white" : "text-gray-600"}`}>{["Any", "Only", "Exclude"][i]}</button>)}</div></div>
+              </FilterSection>
+              {optionsError && <p className="text-xs text-amber-700">Could not load live filter options; showing fallback choices.</p>}
+              <FilterSection title="Race Details">
+                <MultiCheckbox title="Race type" options={["Flat", "Jumps"]} selected={raceTypes} onChange={setRaceTypes} />
+                <MultiSelectDropdown title="Course" options={filterOptions?.courses ?? COURSES} selected={courses} onChange={setCourses} loading={!filterOptions && !optionsError} />
+                <MultiSelectDropdown title="Going" options={orderedGoings(filterOptions?.goings ?? GOINGS)} selected={goings} onChange={setGoings} loading={!filterOptions && !optionsError} />
+                <MultiSelectDropdown title="Race class" options={filterOptions?.raceClasses ?? CLASSES} selected={raceClasses} onChange={setRaceClasses} loading={!filterOptions && !optionsError} />
+                <MultiSelectDropdown title="Surface" options={filterOptions?.surfaces ?? SURFACES} selected={surfaces} onChange={setSurfaces} loading={!filterOptions && !optionsError} />
+                <RangeField title="Distance (furlongs)" min={minDistance} max={maxDistance} setMin={setMinDistance} setMax={setMaxDistance} step="0.5" />
+                <div><p className="mb-2 text-sm font-medium">Handicap race</p><ChoiceSwitch value={handicap} onChange={setHandicap} /></div>
+              </FilterSection>
+              <FilterSection title="Horse History">
+                <div><p className="mb-2 text-sm font-medium">C — Course winner</p><ChoiceSwitch value={courseWinner} onChange={setCourseWinner} /></div>
+                <div><p className="mb-2 text-sm font-medium">D — Distance winner</p><ChoiceSwitch value={distanceWinner} onChange={setDistanceWinner} /></div>
+                <div><p className="mb-2 text-sm font-medium">CD — Course &amp; distance winner</p><ChoiceSwitch value={courseDistanceWinner} onChange={setCourseDistanceWinner} /></div>
+                <div><p className="mb-2 text-sm font-medium">BF — Beaten favourite</p><ChoiceSwitch value={beatenFavourite} onChange={setBeatenFavourite} /></div>
+              </FilterSection>
+              <FilterSection title="Recent Form">
+                <div><p className="mb-2 text-sm font-medium">Won in last 3</p><ChoiceSwitch value={wonInLast3} onChange={setWonInLast3} /></div>
+                <div><p className="mb-2 text-sm font-medium">Won twice in last 6</p><ChoiceSwitch value={win2InLast6} onChange={setWin2InLast6} /></div>
+              </FilterSection>
+            </div>
+            <div className="flex justify-end"><button type="button" onClick={runScenario} disabled={loading || !startDate || !endDate || comparedScenarios.length >= 4} className="rounded-lg bg-[#003b2b] px-6 py-3 text-sm font-semibold text-white disabled:opacity-50">{loading ? "Calculating…" : comparedScenarios.length >= 4 ? "Comparison Full (4/4)" : "Run & Compare"}</button></div>
+            {error && <p className="text-sm text-red-700">{error}</p>}
+            <div className="border-t border-gray-200 pt-5"><ScenarioChart scenarios={comparedScenarios} /></div>
           </div>
+        </details>
 
-          {/* --------------------------------------------------
-              Filters
-          -------------------------------------------------- */}
-
-          <div className="space-y-3">
-
-            {/* Betting Conditions */}
-
-            <FilterSection
-              title="Betting Conditions"
-              defaultOpen
-            >
-              <Field label="Minimum odds">
-                <input
-                  type="number"
-                  value={minOdds}
-                  onChange={(e) =>
-                    setMinOdds(e.target.value)
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Maximum odds">
-                <input
-                  type="number"
-                  value={maxOdds}
-                  onChange={(e) =>
-                    setMaxOdds(e.target.value)
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Minimum odds rank">
-                <input
-                  type="number"
-                  value={minPreRaceRank}
-                  onChange={(e) =>
-                    setMinPreRaceRank(e.target.value)
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Maximum odds rank">
-                <input
-                  type="number"
-                  value={maxPreRaceRank}
-                  onChange={(e) =>
-                    setMaxPreRaceRank(e.target.value)
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Favourite status">
-                <select
-                  value={favouriteStatus}
-                  onChange={(e) =>
-                    setFavouriteStatus(
-                      e.target.value as
-                        | "any"
-                        | "favourite"
-                        | "not_favourite"
-                    )
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                >
-                  <option value="any">
-                    Any
-                  </option>
-                  <option value="favourite">
-                    Favourite only
-                  </option>
-                  <option value="not_favourite">
-                    Exclude favourites
-                  </option>
-                </select>
-              </Field>
-            </FilterSection>
-
-            {/* Race Details */}
-
-            <FilterSection title="Race Details">
-
-              <Field label="Race type">
-                <select
-                  value={raceType}
-                  onChange={(e) =>
-                    setRaceType(e.target.value)
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                >
-                  <option value="All">All</option>
-                  <option value="Flat">Flat</option>
-                  <option value="Jumps">Jumps</option>
-                  <option value="Unknown">
-                    Unknown
-                  </option>
-                </select>
-              </Field>
-
-              <Field label="Course">
-                <input
-                  value={course}
-                  onChange={(e) =>
-                    setCourse(e.target.value)
-                  }
-                  placeholder="e.g. Ascot"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Race class">
-                <input
-                  value={raceClass}
-                  onChange={(e) =>
-                    setRaceClass(e.target.value)
-                  }
-                  placeholder="Exact class"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Going">
-                <input
-                  value={going}
-                  onChange={(e) =>
-                    setGoing(e.target.value)
-                  }
-                  placeholder="e.g. Good"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Surface">
-                <input
-                  value={surface}
-                  onChange={(e) =>
-                    setSurface(e.target.value)
-                  }
-                  placeholder="Exact surface"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Minimum distance (furlongs)">
-                <input
-                  type="number"
-                  step="0.5"
-                  value={minDistance}
-                  onChange={(e) =>
-                    setMinDistance(e.target.value)
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Maximum distance (furlongs)">
-                <input
-                  type="number"
-                  step="0.5"
-                  value={maxDistance}
-                  onChange={(e) =>
-                    setMaxDistance(e.target.value)
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
-                />
-              </Field>
-
-              <Field label="Handicap race">
-                <BooleanSelect
-                  value={handicap}
-                  onChange={setHandicap}
-                />
-              </Field>
-
-            </FilterSection>
-
-            {/* Horse History */}
-
-            <FilterSection title="Horse History">
-
-              <Field label="Previous course winner">
-                <BooleanSelect
-                  value={courseWinner}
-                  onChange={setCourseWinner}
-                />
-              </Field>
-
-              <Field label="Previous distance winner">
-                <BooleanSelect
-                  value={distanceWinner}
-                  onChange={setDistanceWinner}
-                />
-              </Field>
-
-              <Field label="Course & distance winner">
-                <BooleanSelect
-                  value={courseDistanceWinner}
-                  onChange={setCourseDistanceWinner}
-                />
-              </Field>
-
-            </FilterSection>
-
-            {/* Recent Form */}
-
-            <FilterSection title="Recent Form">
-
-              <Field label="Won in last 3">
-                <BooleanSelect
-                  value={wonInLast3}
-                  onChange={setWonInLast3}
-                />
-              </Field>
-
-              <Field label="Won twice in last 6">
-                <BooleanSelect
-                  value={win2InLast6}
-                  onChange={setWin2InLast6}
-                />
-              </Field>
-
-            </FilterSection>
-
-            {/* Each-Way */}
-
-            <FilterSection title="Each-Way Conditions">
-
-              <Field label="Each-way eligible">
-                <BooleanSelect
-                  value={eachWayEligible}
-                  onChange={setEachWayEligible}
-                />
-              </Field>
-
-            </FilterSection>
-
+        <details className="mb-5 overflow-hidden rounded-xl border border-[#ded8c9] bg-white shadow-sm">
+          <summary className="cursor-pointer bg-[#f8f7f2] px-5 py-4 font-serif text-2xl text-[#123d2d]">Saved Scenarios</summary>
+          <div className="border-t border-[#ded8c9] p-4">
+            <SavedScenarios selectedScenario={selectedScenario?.definition ?? null} onLoadScenario={loadSavedScenario} />
+            <p className="mt-2 text-xs text-gray-500">Saved definitions do not include performance data. Load a scenario, then run it to calculate its chart.</p>
+            {selectedScenario && <div className="mt-4 border-t border-gray-200 pt-4"><ScenarioChart scenarios={[selectedScenario]} /></div>}
           </div>
+        </details>
 
-          {/* Run button */}
-
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={runScenario}
-              disabled={
-                loading ||
-                !startDate ||
-                !endDate ||
-                comparedScenarios.length >= 4
-              }
-              className="rounded-lg px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-              style={{
-                background: "var(--racing-green, #164734)",
-              }}
-            >
-              {loading
-                ? "Calculating..."
-                : comparedScenarios.length >= 4
-                  ? "Comparison Full (4/4)"
-                  : "Run & Compare"}
-            </button>
-          </div>
-
-          {error && (
-            <p className="mt-4 text-sm text-red-700">
-              {error}
-            </p>
-          )}
-        </section>
-
-        {/* --------------------------------------------------
-            Saved Scenarios - V2.3
-        -------------------------------------------------- */}
-
-        <SavedScenarios
-          selectedScenario={
-            selectedScenario?.definition ?? null
-          }
-          onLoadScenario={loadSavedScenario}
-        />
-
-        {/* --------------------------------------------------
-            Chart
-        -------------------------------------------------- */}
-
-        <ScenarioChart
-          scenarios={comparedScenarios}
-        />
+        <details className="mb-5 overflow-hidden rounded-xl border border-[#ded8c9] bg-white shadow-sm">
+          <summary className="cursor-pointer bg-[#f8f7f2] px-5 py-4 font-serif text-2xl text-[#123d2d]">Modelled Scenarios</summary>
+          <div className="border-t border-[#ded8c9] p-4"><ModelledScenarios /></div>
+        </details>
 
         {/* --------------------------------------------------
             Comparison Manager
