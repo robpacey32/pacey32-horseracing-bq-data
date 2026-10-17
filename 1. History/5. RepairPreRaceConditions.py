@@ -80,7 +80,7 @@ def append_repair(client, day, course, going, surface):
         elif col == 'RaceSurface':
             expressions.append(f'IF({missing("s.RaceSurface")}, @surface, s.RaceSurface)')
         elif col == 'load_timestamp':
-            expressions.append('CURRENT_TIMESTAMP()')
+            expressions.append("CURRENT_DATETIME('UTC')")
         else:
             expressions.append(f's.`{col}`')
     sql = f'''INSERT INTO `{TABLE}` ({names})
