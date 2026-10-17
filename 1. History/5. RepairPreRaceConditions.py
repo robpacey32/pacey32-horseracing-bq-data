@@ -52,7 +52,7 @@ def meeting_conditions(html):
     return results
 
 def source_counts(client, day):
-    sql = f'''SELECT RaceLocation AS course, COUNT(*) AS rows,
+    sql = f'''SELECT RaceLocation AS course, COUNT(*) AS row_count,
       COUNTIF({missing('RaceGoing')}) AS missing_going,
       COUNTIF({missing('RaceSurface')}) AS missing_surface
       FROM `{TABLE}` WHERE SAFE.PARSE_DATE('%d/%m/%Y', RaceDate)=@day
@@ -61,7 +61,7 @@ def source_counts(client, day):
     sql = f'''WITH ranked AS (
       SELECT *, ROW_NUMBER() OVER (PARTITION BY SourceURL,HorseName ORDER BY load_timestamp DESC) rn
       FROM `{TABLE}` WHERE SAFE.PARSE_DATE('%d/%m/%Y',RaceDate)=@day
-    ) SELECT RaceLocation course, COUNT(*) rows,
+    ) SELECT RaceLocation course, COUNT(*) row_count,
       COUNTIF({missing('RaceGoing')}) missing_going,
       COUNTIF({missing('RaceSurface')}) missing_surface
       FROM ranked WHERE rn=1 GROUP BY course ORDER BY course'''
