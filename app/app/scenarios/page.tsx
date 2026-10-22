@@ -190,7 +190,20 @@ function MultiCheckbox({title, options, selected, onChange}: {title:string; opti
 }
 
 const COURSES = ["Aintree", "Ascot", "Ayr", "Bangor", "Bath", "Beverley", "Brighton", "Carlisle", "Cartmel", "Catterick", "Chelmsford", "Cheltenham", "Chepstow", "Chester", "Clonmel", "Curragh", "Doncaster", "Dundalk", "Epsom", "Exeter", "Fairyhouse", "Ffos Las", "Fontwell", "Galway", "Goodwood", "Hamilton", "Haydock", "Hexham", "Huntingdon", "Kempton", "Leicester", "Leopardstown", "Limerick", "Lingfield", "Listowel", "Ludlow", "Market Rasen", "Musselburgh", "Naas", "Navan", "Newbury", "Newcastle", "Newmarket", "Nottingham", "Perth", "Pontefract", "Punchestown", "Redcar", "Ripon", "Roscommon", "Salisbury", "Sandown", "Sedgefield", "Southwell", "Stratford", "Taunton", "Thirsk", "Thurles", "Tipperary", "Uttoxeter", "Warwick", "Wetherby", "Wincanton", "Windsor", "Wolverhampton", "Worcester", "Yarmouth", "York"];
-const GOINGS = ["Heavy", "Soft To Heavy", "Soft", "Yielding To Soft", "Yielding", "Good To Soft", "Good", "Good To Firm", "Firm", "Fast", "Standard To Slow", "Standard"];
+const GOINGS = [
+  "Heavy",
+  "Soft to Heavy",
+  "Soft",
+  "Yielding to Soft",
+  "Good to Soft",
+  "Yielding",
+  "Good to Yielding",
+  "Good",
+  "Good to Firm",
+  "Firm",
+  "Standard / Slow",
+  "Standard",
+];
 const CLASSES = ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7"];
 const SURFACES = ["Turf", "All Weather", "All-Weather", "AW", "Tapeta", "Polytrack", "Fibresand", "Dirt", "Grass"];
 

@@ -191,7 +191,7 @@ def scrape_prerace(driver, prerace_url, max_retries=3):
                         race_going = part
                     elif match := re.search(r"(\d+)\s*Runners?", part):
                         race_runners = match.group(1)
-                    elif re.search(r"(Turf|Allweather|All Weather|AW|Polytrack|Fibresand|Tapeta|Dirt)", part, re.I):
+                    elif re.search(r"(Turf|Allweather|All Weather|AW|Polytrack|Fibresand|Tapeta|Dirt|Sand)", part, re.I):
                         race_surface = part
 
             # --- Horse info ---
@@ -388,7 +388,7 @@ def scrape_results(driver, result_url, max_retries=3):
                     race_distance = m.group(1)
                 if m := re.search(r"(Heavy|Soft|Good|Firm|Standard|Slow|Yielding|Fast)", t):
                     race_going = m.group(1)
-                if m := re.search(r"(Turf|Polytrack|Tapeta|AW|Dirt|All Weather|Allweather)", t, re.I):
+                if m := re.search(r"(Turf|Polytrack|Tapeta|AW|Dirt|Sand|All Weather|Allweather)", t, re.I):
                     race_surface = m.group(1)
 
             # --- Prize money ---

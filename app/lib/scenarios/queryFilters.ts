@@ -24,7 +24,7 @@ export function scenarioWhere(filters: ScenarioFilters, startDate: string, endDa
     { plural: "raceTypes", singular: "raceType", column: "Pre_RaceType" },
     { plural: "courses", singular: "course", column: "Pre_RaceLocation" },
     { plural: "raceClasses", singular: "raceClass", column: "Pre_RaceClass" },
-    { plural: "goings", singular: "going", column: "Pre_RaceGoing" },
+    { plural: "goings", singular: "going", column: "GoingStandardised" },
     { plural: "surfaces", singular: "surface", column: "Pre_RaceSurface" },
   ];
   for (const { plural, singular, column } of multi) {

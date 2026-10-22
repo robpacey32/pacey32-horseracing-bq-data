@@ -13,7 +13,7 @@ export async function GET() {
         FROM ${TABLE}, UNNEST([
           STRUCT('courses' AS category, CAST(Pre_RaceLocation AS STRING) AS value),
           STRUCT('raceClasses' AS category, CAST(Pre_RaceClass AS STRING) AS value),
-          STRUCT('goings' AS category, CAST(Pre_RaceGoing AS STRING) AS value),
+          STRUCT('goings' AS category, CAST(GoingStandardised AS STRING) AS value),
           STRUCT('surfaces' AS category, CAST(Pre_RaceSurface AS STRING) AS value)
         ])
       )
