@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google-cloud/bigquery": "^9.2.0",
+    "firebase": "^13.1.0",
     "next": "^16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
