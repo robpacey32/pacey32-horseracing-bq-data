@@ -25,11 +25,11 @@ const navigation = [
     href: "/bet-tracker",
     symbol: "▤",
   },
-  {
-    name: "QA",
-    href: "/qa",
-    symbol: "◇",
-  },
+//  {
+//    name: "QA",
+//    href: "/qa",
+//    symbol: "◇",
+//  },
 ];
 
 export default function Header() {
