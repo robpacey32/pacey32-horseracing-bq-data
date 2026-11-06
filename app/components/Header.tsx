@@ -1,13 +1,12 @@
+
 "use client";
 
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 const navigation = [
   {
@@ -25,48 +24,63 @@ const navigation = [
     href: "/bet-tracker",
     symbol: "▤",
   },
-//  {
-//    name: "QA",
-//    href: "/qa",
-//    symbol: "◇",
-//  },
+  // QA page remains accessible directly at /qa
 ];
 
 export default function Header() {
   const pathname = usePathname();
 
-  const [menuOpen, setMenuOpen] =
-    useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const menuRef =
-    useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  // Listen for Firebase authentication changes
   useEffect(() => {
-    function handleOutsideClick(
-      event: MouseEvent
-    ) {
+    return onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+  }, []);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleOutsideClick(event: MouseEvent) {
       if (
         menuRef.current &&
-        !menuRef.current.contains(
-          event.target as Node
-        )
+        !menuRef.current.contains(event.target as Node)
       ) {
         setMenuOpen(false);
       }
     }
 
-    document.addEventListener(
-      "mousedown",
-      handleOutsideClick
-    );
+    document.addEventListener("mousedown", handleOutsideClick);
 
     return () => {
-      document.removeEventListener(
-        "mousedown",
-        handleOutsideClick
-      );
+      document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, []);
+
+  // Close menu when navigating
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  const accountLabel = authLoading
+    ? "Account"
+    : user
+      ? "My Account"
+      : "Sign in";
+
+  const menuItems = [
+    ...navigation,
+    {
+      name: accountLabel,
+      href: "/account",
+      symbol: "♙",
+    },
+  ];
 
   return (
     <header className="relative z-50 border-b border-[var(--racing-gold)] bg-[var(--racing-paper)]">
@@ -89,26 +103,19 @@ export default function Header() {
         </Link>
 
         {/* Menu */}
-        <div
-          ref={menuRef}
-          className="relative"
-        >
+        <div ref={menuRef} className="relative">
           <button
             type="button"
-            onClick={() =>
-              setMenuOpen(
-                (current) => !current
-              )
-            }
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            onClick={() => setMenuOpen((current) => !current)}
             className="racing-serif flex h-10 items-center gap-3 rounded border border-[var(--racing-gold)] bg-[var(--racing-green)] px-5 text-[16px] font-medium text-white transition hover:bg-[var(--racing-green-dark)]"
           >
             Menu
 
             <span
               className={`text-[10px] transition-transform ${
-                menuOpen
-                  ? "rotate-180"
-                  : ""
+                menuOpen ? "rotate-180" : ""
               }`}
             >
               ▾
@@ -116,21 +123,21 @@ export default function Header() {
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-[48px] w-56 overflow-hidden rounded border border-[var(--racing-border)] bg-[var(--racing-paper)] shadow-xl">
-              {navigation.map((item) => {
+            <div
+              role="menu"
+              className="absolute right-0 top-[48px] w-56 overflow-hidden rounded border border-[var(--racing-border)] bg-[var(--racing-paper)] shadow-xl"
+            >
+              {menuItems.map((item) => {
                 const active =
                   pathname === item.href ||
-                  pathname.startsWith(
-                    `${item.href}/`
-                  );
+                  pathname.startsWith(`${item.href}/`);
 
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
                     className={`flex items-center gap-4 border-b border-[var(--racing-border)] px-5 py-3.5 last:border-b-0 ${
                       active
                         ? "bg-[var(--racing-green-light)] text-[var(--racing-green-dark)]"
