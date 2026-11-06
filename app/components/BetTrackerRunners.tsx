@@ -876,7 +876,13 @@ export default function BetTrackerRunners() {
 
                                     </td>
 
-                                    <td className="px-4 py-3 text-gray-600">{runner.RaceHistoryStats || "—"}</td>
+                                    <td className="px-4 py-3 text-gray-600">
+                                      {runner.RaceHistoryStats
+                                        ?.split("|")
+                                        .map((value) => value.trim())
+                                        .filter(Boolean)
+                                        .join(" | ") || "—"}
+                                    </td>
                                    <td className="px-4 py-3 text-gray-600">{runner.LastRun || "—"}</td>
                                    <td className="px-4 py-3 text-gray-600">{runner.Headgear || "—"}</td>
                                    <td className="px-4 py-3">
