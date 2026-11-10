@@ -672,17 +672,37 @@ export default function RaceViewerPage() {
           string[] =
           data.dates ?? [];
 
-        setDates(
-          loadedDates
-        );
+        // Honour deep links from Analytics before selecting a default race.
+        const urlParams = new URLSearchParams(window.location.search);
+        const requestedDate = urlParams.get("date")?.trim() ?? "";
+        const requestedLocation = urlParams.get("location")?.trim() ?? "";
+        const requestedTime = urlParams.get("time")?.trim() ?? "";
+        const hasDeepLink = /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+          && requestedLocation.length > 0
+          && /^\d{1,2}:\d{2}$/.test(requestedTime);
 
-        if (
-          loadedDates.length >
-          0
-        ) {
-          setSelectedDate(
-            loadedDates[0]
-          );
+        if (hasDeepLink) {
+          pendingHistoricalRace.current = {
+            raceId: null,
+            date: requestedDate,
+            location: requestedLocation,
+            time: requestedTime,
+            raceName: null,
+            position: null,
+            positionInt: null,
+            placed: false,
+            won: false,
+          };
+          // Older dates may not be in the default date selector response.
+          setDates(loadedDates.includes(requestedDate)
+            ? loadedDates
+            : [...loadedDates, requestedDate].sort((a, b) => b.localeCompare(a)));
+          setSelectedDate(requestedDate);
+        } else {
+          setDates(loadedDates);
+          if (loadedDates.length > 0) {
+            setSelectedDate(loadedDates[0]);
+          }
         }
       } catch {
         setError(
