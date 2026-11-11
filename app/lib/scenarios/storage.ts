@@ -5,6 +5,10 @@ const STORAGE_KEY = "pacey32-horseracing-scenarios-v1";
 export interface SavedScenario extends ScenarioDefinition {
   savedAt: string;
   updatedAt: string;
+
+  // Personalised Telegram alert preferences
+  telegramEnabled?: boolean;
+  telegramNoSelections?: boolean;
 }
 
 function isBrowser(): boolean {

@@ -7,6 +7,10 @@ from google.cloud import bigquery
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+import hashlib
+import re
+from google.cloud import firestore
+
 # -------------------------
 # CONFIG
 # -------------------------
@@ -14,11 +18,17 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 PROJECT_ID = "horseracing-pacey32-github"
 USERS_TABLE = f"{PROJECT_ID}.bettingalerts.TelegramUsers"
 
+LINKS_TABLE = f"{PROJECT_ID}.bettingalerts.TelegramAccountLinks"
+LINK_CODES_COLLECTION = "telegramLinkCodes"
+FIREBASE_LINKS_COLLECTION = "telegramAccountLinks"
+
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_WEBHOOK_SECRET = os.environ["TELEGRAM_WEBHOOK_SECRET"]
 
 app = Flask(__name__)
 bq_client = bigquery.Client(project=PROJECT_ID)
+
+firestore_client = firestore.Client(project=PROJECT_ID)
 
 # -------------------------
 # BIGQUERY HELPERS
@@ -312,18 +322,210 @@ def prepare_user(update: Update, command_name: str):
 
     return telegram_data["user_id"], telegram_data["chat_id"]
 
+def create_telegram_account_link(
+    code: str,
+    telegram_user_id: str,
+    chat_id: str,
+) -> tuple[bool, str]:
+    """Atomically redeem a code and link accounts in Firestore."""
+
+    if not re.fullmatch(r"[0-9a-f]{64}", code):
+        return False, "Invalid linking code."
+
+    code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    code_ref = firestore_client.collection(LINK_CODES_COLLECTION).document(code_hash)
+    firebase_links = firestore_client.collection("telegramAccountLinks")
+    telegram_links = firestore_client.collection("telegramUserLinks")
+
+    transaction = firestore_client.transaction()
+
+    @firestore.transactional
+    def link(transaction):
+        code_snapshot = code_ref.get(transaction=transaction)
+        if not code_snapshot.exists:
+            return False, "Invalid or expired linking code."
+
+        data = code_snapshot.to_dict()
+        now = datetime.now(timezone.utc)
+
+        if data.get("usedAt") is not None:
+            return False, "This linking code has already been used."
+
+        expires_at = data.get("expiresAt")
+        if expires_at is None or expires_at <= now:
+            return False, "This linking code has expired."
+
+        firebase_uid = data.get("firebaseUID")
+        if not firebase_uid:
+            return False, "Invalid linking code."
+
+        firebase_ref = firebase_links.document(firebase_uid)
+        telegram_ref = telegram_links.document(telegram_user_id)
+        firebase_snapshot = firebase_ref.get(transaction=transaction)
+        telegram_snapshot = telegram_ref.get(transaction=transaction)
+
+        if firebase_snapshot.exists:
+            return False, "This Firebase account is already linked."
+        if telegram_snapshot.exists:
+            return False, "This Telegram account is already linked."
+
+        transaction.create(firebase_ref, {
+            "telegramUserID": telegram_user_id,
+            "chatID": chat_id,
+            "linkedAt": firestore.SERVER_TIMESTAMP,
+        })
+        transaction.create(telegram_ref, {
+            "firebaseUID": firebase_uid,
+            "chatID": chat_id,
+            "linkedAt": firestore.SERVER_TIMESTAMP,
+        })
+        transaction.update(code_ref, {"usedAt": firestore.SERVER_TIMESTAMP})
+
+        return True, "Your Telegram account has been linked successfully."
+
+    success, message = link(transaction)
+
+    if success:
+        try:
+            sync_telegram_account_links()
+        except Exception:
+            app.logger.exception(
+                "Telegram account linked, but BigQuery sync failed."
+            )
+
+    return success, message
+
+
+def sync_telegram_account_links():
+    """Synchronise authoritative Firestore links into BigQuery."""
+
+    firebase_links = firestore_client.collection(
+        FIREBASE_LINKS_COLLECTION
+    )
+
+    records = []
+
+    for document in firebase_links.stream():
+        data = document.to_dict()
+
+        firebase_uid = document.id
+        telegram_user_id = data.get("telegramUserID")
+        chat_id = data.get("chatID")
+        linked_at = data.get("linkedAt")
+
+        if not telegram_user_id or not chat_id or not linked_at:
+            continue
+
+        records.append({
+            "FirebaseUID": firebase_uid,
+            "TelegramUserID": telegram_user_id,
+            "ChatID": chat_id,
+            "LinkedAt": linked_at.isoformat(),
+        })
+
+    if not records:
+        return 0
+
+    query = f"""
+    MERGE `{LINKS_TABLE}` T
+    USING (
+      SELECT
+        FirebaseUID,
+        TelegramUserID,
+        ChatID,
+        TIMESTAMP(LinkedAt) AS LinkedAt
+      FROM UNNEST(@records)
+    ) S
+    ON T.FirebaseUID = S.FirebaseUID
+    WHEN MATCHED THEN
+      UPDATE SET
+        TelegramUserID = S.TelegramUserID,
+        ChatID = S.ChatID,
+        UpdatedAt = CURRENT_TIMESTAMP()
+    WHEN NOT MATCHED THEN
+      INSERT (
+        FirebaseUID,
+        TelegramUserID,
+        ChatID,
+        LinkedAt,
+        UpdatedAt
+      )
+      VALUES (
+        S.FirebaseUID,
+        S.TelegramUserID,
+        S.ChatID,
+        S.LinkedAt,
+        CURRENT_TIMESTAMP()
+      )
+    """
+
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ArrayQueryParameter(
+                "records",
+                "RECORD",
+                [
+                    bigquery.StructQueryParameter(
+                        None,
+                        bigquery.ScalarQueryParameter("FirebaseUID", "STRING", r["FirebaseUID"]),
+                        bigquery.ScalarQueryParameter("TelegramUserID", "STRING", r["TelegramUserID"]),
+                        bigquery.ScalarQueryParameter("ChatID", "STRING", r["ChatID"]),
+                        bigquery.ScalarQueryParameter("LinkedAt", "STRING", r["LinkedAt"]),
+                    )
+                    for r in records
+                ],
+            )
+        ]
+    )
+
+    bq_client.query(query, job_config=job_config).result()
+
+    return len(records)
+
 
 # -------------------------
 # COMMANDS
 # -------------------------
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        if update.effective_chat.type != "private":
+            await update.message.reply_text(
+                "Account linking is only available in private chats."
+            )
+            return
+
+        if len(context.args) != 1:
+            await update.message.reply_text("Invalid linking code.")
+            return
+
+        telegram_user_id = str(update.effective_user.id)
+        chat_id = str(update.effective_chat.id)
+
+        try:
+            success, message = create_telegram_account_link(
+                code=context.args[0],
+                telegram_user_id=telegram_user_id,
+                chat_id=chat_id,
+            )
+        except Exception:
+            app.logger.exception("Telegram account linking failed")
+            await update.message.reply_text(
+                "Account linking failed. Please try again."
+            )
+            return
+
+        await update.message.reply_text(message)
+        return
+
     prepare_user(update, "/start")
 
     await update.message.reply_text(
         "You are subscribed to alerts.\n"
         "Use /help to see available commands."
     )
+
 
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -11,6 +11,7 @@
   "dependencies": {
     "@google-cloud/bigquery": "^9.2.0",
     "firebase": "^13.1.0",
+    "firebase-admin": "^14.5.0",
     "next": "^16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -25,5 +26,8 @@
     "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.7"
   }
 }

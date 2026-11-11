@@ -1,0 +1,5 @@
+flask
+gunicorn
+python-telegram-bot
+google-cloud-bigquery
+google-cloud-firestore

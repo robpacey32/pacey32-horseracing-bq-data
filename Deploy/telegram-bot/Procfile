@@ -1,0 +1,1 @@
+web: gunicorn --bind :$PORT Alerts.telegram_bot:app

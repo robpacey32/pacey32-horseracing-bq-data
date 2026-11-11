@@ -19,3 +19,4 @@ python-telegram-bot
 pymongo
 
 streamlit-local-storage
+google-cloud-firestore

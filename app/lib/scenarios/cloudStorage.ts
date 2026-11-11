@@ -45,12 +45,14 @@ export async function saveCloudScenario(
   const previous = await getDoc(reference);
   const now = new Date().toISOString();
 
+  const previousData = previous.exists()
+    ? previous.data()
+    : null;
+
   const saved: SavedScenario = {
     ...definition,
     name: definition.name.trim(),
-    savedAt: previous.exists()
-      ? (previous.data().savedAt as string) ?? now
-      : now,
+    savedAt: previousData?.savedAt ?? now,
     updatedAt: now,
   };
 
@@ -59,7 +61,26 @@ export async function saveCloudScenario(
     JSON.stringify(saved)
   ) as SavedScenario;
 
-  await setDoc(reference, clean);
+  // Preserve Telegram preferences when a scenario is edited.
+  await setDoc(reference, {
+    ...clean,
+    telegramEnabled: previousData?.telegramEnabled ?? false,
+    telegramNoSelections:
+      previousData?.telegramNoSelections ?? false,
+  });
+}
+
+export async function updateScenarioTelegramSettings(
+  uid: string,
+  id: string,
+  telegramEnabled: boolean,
+  telegramNoSelections: boolean
+): Promise<void> {
+  await updateDoc(scenarioDocument(uid, id), {
+    telegramEnabled,
+    telegramNoSelections,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 export async function renameCloudScenario(
@@ -85,7 +106,6 @@ export async function deleteCloudScenario(
 ): Promise<void> {
   await deleteDoc(scenarioDocument(uid, id));
 }
-
 
 export async function migrateLocalScenarios(
   uid: string,
@@ -124,4 +144,3 @@ export async function migrateLocalScenarios(
 
   return { imported, skipped };
 }
-

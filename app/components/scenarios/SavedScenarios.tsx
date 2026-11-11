@@ -11,12 +11,14 @@ import {
   getSavedScenarios,
   type SavedScenario,
 } from "@/lib/scenarios/storage";
+
 import {
   getCloudScenarios,
   saveCloudScenario,
   renameCloudScenario,
   deleteCloudScenario,
   migrateLocalScenarios,
+  updateScenarioTelegramSettings,
 } from "@/lib/scenarios/cloudStorage";
 
 interface Props {
@@ -234,6 +236,33 @@ export default function SavedScenarios({
     }
   }
 
+  async function handleTelegramSettings(
+    scenario: SavedScenario,
+    enabled: boolean,
+    noSelections: boolean
+  ) {
+    if (!user || busy) return;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await updateScenarioTelegramSettings(
+        user.uid,
+        scenario.id,
+        enabled,
+        noSelections
+      );
+
+      await refresh(user.uid);
+      setMessage("Telegram preferences updated.");
+    } catch (err) {
+      showError(err, "Unable to update Telegram preferences.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleMigration() {
     if (!user || busy) return;
 
@@ -355,6 +384,8 @@ export default function SavedScenarios({
         id: crypto.randomUUID(),
         savedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        telegramEnabled: false,
+        telegramNoSelections: false,
       }));
 
       const result = await migrateLocalScenarios(
@@ -532,6 +563,49 @@ export default function SavedScenarios({
                       {scenario.startDate} to {scenario.endDate}
                       {" · "}
                       Saved {formatDate(scenario.savedAt)}
+                    </div>
+
+                    {/* Telegram preferences */}
+                    <div className="mt-3 space-y-2">
+                      <label className="flex items-center gap-2 text-sm text-gray-500">
+                        <input
+                          type="checkbox"
+                          checked={
+                            scenario.telegramEnabled ?? false
+                          }
+                          disabled
+                          onChange={() =>
+                            void handleTelegramSettings(
+                              scenario,
+                              !scenario.telegramEnabled,
+                              scenario.telegramNoSelections ?? false
+                            )
+                          }
+                        />
+                        Daily Telegram alerts
+                      </label>
+
+                      <label className="flex items-center gap-2 text-sm text-gray-500">
+                        <input
+                          type="checkbox"
+                          checked={
+                            scenario.telegramNoSelections ?? false
+                          }
+                          disabled
+                          onChange={() =>
+                            void handleTelegramSettings(
+                              scenario,
+                              scenario.telegramEnabled ?? false,
+                              !scenario.telegramNoSelections
+                            )
+                          }
+                        />
+                        Notify when no horses qualify
+                      </label>
+
+                      <p className="text-xs text-gray-500">
+                        Telegram account linking will be available soon.
+                      </p>
                     </div>
                   </div>
 
