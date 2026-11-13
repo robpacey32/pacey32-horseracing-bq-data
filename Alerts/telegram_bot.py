@@ -21,6 +21,7 @@ USERS_TABLE = f"{PROJECT_ID}.bettingalerts.TelegramUsers"
 LINKS_TABLE = f"{PROJECT_ID}.bettingalerts.TelegramAccountLinks"
 LINK_CODES_COLLECTION = "telegramLinkCodes"
 FIREBASE_LINKS_COLLECTION = "telegramAccountLinks"
+PENDING_TRANSFERS_COLLECTION = "telegramPendingTransfers"
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_WEBHOOK_SECRET = os.environ["TELEGRAM_WEBHOOK_SECRET"]
@@ -322,82 +323,383 @@ def prepare_user(update: Update, command_name: str):
 
     return telegram_data["user_id"], telegram_data["chat_id"]
 
+
 def create_telegram_account_link(
     code: str,
     telegram_user_id: str,
     chat_id: str,
 ) -> tuple[bool, str]:
-    """Atomically redeem a code and link accounts in Firestore."""
+    """Redeem a linking code or request a confirmed transfer."""
 
     if not re.fullmatch(r"[0-9a-f]{64}", code):
         return False, "Invalid linking code."
 
-    code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-    code_ref = firestore_client.collection(LINK_CODES_COLLECTION).document(code_hash)
-    firebase_links = firestore_client.collection("telegramAccountLinks")
-    telegram_links = firestore_client.collection("telegramUserLinks")
+    code_hash = hashlib.sha256(
+        code.encode("utf-8")
+    ).hexdigest()
+
+    code_ref = firestore_client.collection(
+        LINK_CODES_COLLECTION
+    ).document(code_hash)
+
+    firebase_links = firestore_client.collection(
+        FIREBASE_LINKS_COLLECTION
+    )
+
+    telegram_links = firestore_client.collection(
+        "telegramUserLinks"
+    )
+
+    pending_ref = firestore_client.collection(
+        PENDING_TRANSFERS_COLLECTION
+    ).document(telegram_user_id)
 
     transaction = firestore_client.transaction()
 
     @firestore.transactional
     def link(transaction):
-        code_snapshot = code_ref.get(transaction=transaction)
-        if not code_snapshot.exists:
-            return False, "Invalid or expired linking code."
+        code_snapshot = code_ref.get(
+            transaction=transaction
+        )
 
-        data = code_snapshot.to_dict()
+        if not code_snapshot.exists:
+            return (
+                False,
+                "Invalid or expired linking code.",
+                False,
+            )
+
+        data = code_snapshot.to_dict() or {}
         now = datetime.now(timezone.utc)
 
         if data.get("usedAt") is not None:
-            return False, "This linking code has already been used."
+            return (
+                False,
+                "This linking code has already been used.",
+                False,
+            )
 
         expires_at = data.get("expiresAt")
+
         if expires_at is None or expires_at <= now:
-            return False, "This linking code has expired."
+            return (
+                False,
+                "This linking code has expired.",
+                False,
+            )
 
-        firebase_uid = data.get("firebaseUID")
-        if not firebase_uid:
-            return False, "Invalid linking code."
+        target_uid = data.get("firebaseUID")
 
-        firebase_ref = firebase_links.document(firebase_uid)
-        telegram_ref = telegram_links.document(telegram_user_id)
-        firebase_snapshot = firebase_ref.get(transaction=transaction)
-        telegram_snapshot = telegram_ref.get(transaction=transaction)
+        if not target_uid:
+            return False, "Invalid linking code.", False
 
-        if firebase_snapshot.exists:
-            return False, "This Firebase account is already linked."
+        target_ref = firebase_links.document(
+            target_uid
+        )
+
+        telegram_ref = telegram_links.document(
+            telegram_user_id
+        )
+
+        target_snapshot = target_ref.get(
+            transaction=transaction
+        )
+
+        telegram_snapshot = telegram_ref.get(
+            transaction=transaction
+        )
+
+        existing_link = (
+            telegram_snapshot.to_dict()
+            if telegram_snapshot.exists
+            else {}
+        )
+
+        source_uid = existing_link.get("firebaseUID")
+
+        source_ref = (
+            firebase_links.document(source_uid)
+            if source_uid
+            else None
+        )
+
+        source_snapshot = (
+            source_ref.get(transaction=transaction)
+            if source_ref is not None
+            else None
+        )
+
+        # All Firestore reads must precede writes.
+
+        if target_snapshot.exists:
+            return (
+                False,
+                "This Pacey32 account already has a Telegram connection.",
+                False,
+            )
+
         if telegram_snapshot.exists:
-            return False, "This Telegram account is already linked."
+            if not source_uid or source_snapshot is None:
+                return (
+                    False,
+                    "Existing Telegram connection is invalid.",
+                    False,
+                )
 
-        transaction.create(firebase_ref, {
-            "telegramUserID": telegram_user_id,
-            "chatID": chat_id,
-            "linkedAt": firestore.SERVER_TIMESTAMP,
-        })
-        transaction.create(telegram_ref, {
-            "firebaseUID": firebase_uid,
-            "chatID": chat_id,
-            "linkedAt": firestore.SERVER_TIMESTAMP,
-        })
-        transaction.update(code_ref, {"usedAt": firestore.SERVER_TIMESTAMP})
+            if not source_snapshot.exists:
+                return (
+                    False,
+                    "Existing Telegram connection needs recovery.",
+                    False,
+                )
 
-        return True, "Your Telegram account has been linked successfully."
+            source_data = source_snapshot.to_dict() or {}
 
-    success, message = link(transaction)
+            if (
+                str(source_data.get("telegramUserID"))
+                != telegram_user_id
+            ):
+                return (
+                    False,
+                    "Existing account mapping is inconsistent.",
+                    False,
+                )
+
+            # The Telegram account is linked to a different
+            # Firebase account. Require explicit confirmation.
+            transaction.set(
+                pending_ref,
+                {
+                    "sourceFirebaseUID": source_uid,
+                    "targetFirebaseUID": target_uid,
+                    "telegramUserID": telegram_user_id,
+                    "chatID": chat_id,
+                    "createdAt": firestore.SERVER_TIMESTAMP,
+                    "expiresAt": expires_at,
+                },
+            )
+
+            transaction.update(
+                code_ref,
+                {
+                    "usedAt": firestore.SERVER_TIMESTAMP
+                },
+            )
+
+            return (
+                True,
+                "This Telegram account is linked to another "
+                "Pacey32 account.\n\n"
+                "To transfer it to the account you just "
+                "signed into, send /confirmtransfer "
+                "within 10 minutes.\n\n"
+                "Your saved scenarios and betting history "
+                "will stay with their existing accounts.",
+                False,
+            )
+
+        # New account linking (no transfer required).
+        transaction.create(
+            target_ref,
+            {
+                "telegramUserID": telegram_user_id,
+                "chatID": chat_id,
+                "linkedAt": firestore.SERVER_TIMESTAMP,
+            },
+        )
+
+        transaction.create(
+            telegram_ref,
+            {
+                "firebaseUID": target_uid,
+                "chatID": chat_id,
+                "linkedAt": firestore.SERVER_TIMESTAMP,
+            },
+        )
+
+        transaction.update(
+            code_ref,
+            {
+                "usedAt": firestore.SERVER_TIMESTAMP
+            },
+        )
+
+        return (
+            True,
+            "Your Telegram account has been linked successfully.",
+            True,
+        )
+
+    success, message, completed = link(transaction)
+
+    if completed:
+        try:
+            sync_telegram_account_links()
+        except Exception:
+            app.logger.exception(
+                "Telegram linked, but BigQuery sync failed."
+            )
+
+    return success, message
+
+
+def confirm_telegram_account_transfer(
+    telegram_user_id: str,
+    chat_id: str,
+) -> tuple[bool, str]:
+    """Transfer an existing link after Telegram confirmation."""
+
+    firebase_links = firestore_client.collection(
+        FIREBASE_LINKS_COLLECTION
+    )
+
+    telegram_ref = firestore_client.collection(
+        "telegramUserLinks"
+    ).document(telegram_user_id)
+
+    pending_ref = firestore_client.collection(
+        PENDING_TRANSFERS_COLLECTION
+    ).document(telegram_user_id)
+
+    transaction = firestore_client.transaction()
+
+    @firestore.transactional
+    def transfer(transaction):
+        pending_snapshot = pending_ref.get(
+            transaction=transaction
+        )
+
+        if not pending_snapshot.exists:
+            return (
+                False,
+                "No pending transfer. Start from My Account "
+                "on Pacey32.",
+            )
+
+        pending = pending_snapshot.to_dict() or {}
+
+        now = datetime.now(timezone.utc)
+
+        if (
+            not pending.get("expiresAt")
+            or pending["expiresAt"] <= now
+        ):
+            return (
+                False,
+                "Transfer request expired. Generate a new "
+                "link from My Account.",
+            )
+
+        if (
+            str(pending.get("telegramUserID"))
+            != telegram_user_id
+            or str(pending.get("chatID")) != chat_id
+        ):
+            return False, "Transfer verification failed."
+
+        source_uid = pending.get("sourceFirebaseUID")
+        target_uid = pending.get("targetFirebaseUID")
+
+        if not source_uid or not target_uid:
+            return False, "Invalid transfer request."
+
+        source_ref = firebase_links.document(source_uid)
+        target_ref = firebase_links.document(target_uid)
+
+        source_snapshot = source_ref.get(
+            transaction=transaction
+        )
+
+        target_snapshot = target_ref.get(
+            transaction=transaction
+        )
+
+        telegram_snapshot = telegram_ref.get(
+            transaction=transaction
+        )
+
+        # Validate both sides of the existing relationship.
+        if (
+            not source_snapshot.exists
+            or not telegram_snapshot.exists
+        ):
+            return (
+                False,
+                "Existing connection has changed. "
+                "Please start again.",
+            )
+
+        source_data = source_snapshot.to_dict() or {}
+        telegram_data = telegram_snapshot.to_dict() or {}
+
+        if (
+            str(source_data.get("telegramUserID"))
+            != telegram_user_id
+            or telegram_data.get("firebaseUID") != source_uid
+        ):
+            return (
+                False,
+                "Existing connection has changed. "
+                "Please start again.",
+            )
+
+        if target_snapshot.exists:
+            return (
+                False,
+                "The destination Pacey32 account already "
+                "has a Telegram connection.",
+            )
+
+        # Atomic transfer: old link removed, new link created.
+        transaction.delete(source_ref)
+
+        transaction.create(
+            target_ref,
+            {
+                "telegramUserID": telegram_user_id,
+                "chatID": chat_id,
+                "linkedAt": firestore.SERVER_TIMESTAMP,
+            },
+        )
+
+        transaction.update(
+            telegram_ref,
+            {
+                "firebaseUID": target_uid,
+                "chatID": chat_id,
+                "linkedAt": firestore.SERVER_TIMESTAMP,
+            },
+        )
+
+        transaction.delete(pending_ref)
+
+        return (
+            True,
+            "Telegram connection transferred successfully. "
+            "Return to My Account and select Check Connection.",
+        )
+
+    success, message = transfer(transaction)
 
     if success:
         try:
             sync_telegram_account_links()
         except Exception:
             app.logger.exception(
-                "Telegram account linked, but BigQuery sync failed."
+                "Telegram transfer succeeded, but "
+                "BigQuery synchronisation failed."
             )
 
     return success, message
 
 
+
+
 def sync_telegram_account_links():
-    """Synchronise authoritative Firestore links into BigQuery."""
+    """
+    Synchronise authoritative Firestore Telegram links
+    into BigQuery, including deleted or transferred links.
+    """
 
     firebase_links = firestore_client.collection(
         FIREBASE_LINKS_COLLECTION
@@ -406,7 +708,7 @@ def sync_telegram_account_links():
     records = []
 
     for document in firebase_links.stream():
-        data = document.to_dict()
+        data = document.to_dict() or {}
 
         firebase_uid = document.id
         telegram_user_id = data.get("telegramUserID")
@@ -418,12 +720,16 @@ def sync_telegram_account_links():
 
         records.append({
             "FirebaseUID": firebase_uid,
-            "TelegramUserID": telegram_user_id,
-            "ChatID": chat_id,
+            "TelegramUserID": str(telegram_user_id),
+            "ChatID": str(chat_id),
             "LinkedAt": linked_at.isoformat(),
         })
 
+    # Firestore is the authoritative source.
+    # If no links remain, clear the BigQuery mirror.
     if not records:
+        query = f"DELETE FROM `{LINKS_TABLE}` WHERE TRUE"
+        bq_client.query(query).result()
         return 0
 
     query = f"""
@@ -437,12 +743,14 @@ def sync_telegram_account_links():
       FROM UNNEST(@records)
     ) S
     ON T.FirebaseUID = S.FirebaseUID
+
     WHEN MATCHED THEN
       UPDATE SET
         TelegramUserID = S.TelegramUserID,
         ChatID = S.ChatID,
         UpdatedAt = CURRENT_TIMESTAMP()
-    WHEN NOT MATCHED THEN
+
+    WHEN NOT MATCHED BY TARGET THEN
       INSERT (
         FirebaseUID,
         TelegramUserID,
@@ -457,30 +765,55 @@ def sync_telegram_account_links():
         S.LinkedAt,
         CURRENT_TIMESTAMP()
       )
+
+    WHEN NOT MATCHED BY SOURCE THEN
+      DELETE
     """
+
+    parameters = [
+        bigquery.StructQueryParameter(
+            None,
+            bigquery.ScalarQueryParameter(
+                "FirebaseUID",
+                "STRING",
+                record["FirebaseUID"]
+            ),
+            bigquery.ScalarQueryParameter(
+                "TelegramUserID",
+                "STRING",
+                record["TelegramUserID"]
+            ),
+            bigquery.ScalarQueryParameter(
+                "ChatID",
+                "STRING",
+                record["ChatID"]
+            ),
+            bigquery.ScalarQueryParameter(
+                "LinkedAt",
+                "STRING",
+                record["LinkedAt"]
+            ),
+        )
+        for record in records
+    ]
 
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ArrayQueryParameter(
                 "records",
                 "RECORD",
-                [
-                    bigquery.StructQueryParameter(
-                        None,
-                        bigquery.ScalarQueryParameter("FirebaseUID", "STRING", r["FirebaseUID"]),
-                        bigquery.ScalarQueryParameter("TelegramUserID", "STRING", r["TelegramUserID"]),
-                        bigquery.ScalarQueryParameter("ChatID", "STRING", r["ChatID"]),
-                        bigquery.ScalarQueryParameter("LinkedAt", "STRING", r["LinkedAt"]),
-                    )
-                    for r in records
-                ],
+                parameters
             )
         ]
     )
 
-    bq_client.query(query, job_config=job_config).result()
+    bq_client.query(
+        query,
+        job_config=job_config
+    ).result()
 
     return len(records)
+
 
 
 # -------------------------
@@ -526,6 +859,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Use /help to see available commands."
     )
 
+
+async def confirmtransfer(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    if (
+        not update.effective_chat
+        or update.effective_chat.type != "private"
+        or not update.effective_user
+        or not update.message
+    ):
+        return
+
+    telegram_user_id = str(update.effective_user.id)
+    chat_id = str(update.effective_chat.id)
+
+    try:
+        success, message = confirm_telegram_account_transfer(
+            telegram_user_id=telegram_user_id,
+            chat_id=chat_id,
+        )
+
+        await update.message.reply_text(message)
+
+    except Exception:
+        app.logger.exception(
+            "Telegram account transfer failed"
+        )
+
+        await update.message.reply_text(
+            "Transfer failed. Please try again."
+        )
 
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -674,6 +1039,7 @@ def build_telegram_app():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("confirmtransfer", confirmtransfer))
     application.add_handler(CommandHandler("stop", stop))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status))

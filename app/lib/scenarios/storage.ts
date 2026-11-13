@@ -6,8 +6,8 @@ export interface SavedScenario extends ScenarioDefinition {
   savedAt: string;
   updatedAt: string;
 
-  // Personalised Telegram alert preferences
-  telegramEnabled?: boolean;
+  // Personalised notification preferences
+  notificationsEnabled?: boolean;
   telegramNoSelections?: boolean;
 }
 

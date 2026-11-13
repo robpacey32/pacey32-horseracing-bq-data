@@ -1,35 +1,43 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import Link from "next/link";
 
 import { auth } from "@/lib/firebase";
-import type { ScenarioDefinition } from "@/lib/scenarios/types";
+import type {
+  ScenarioDefinition,
+  ScenarioFilters,
+} from "@/lib/scenarios/types";
 import {
   getSavedScenarios,
+  deleteSavedScenario,
   type SavedScenario,
 } from "@/lib/scenarios/storage";
-
 import {
   getCloudScenarios,
-  saveCloudScenario,
   renameCloudScenario,
   deleteCloudScenario,
   migrateLocalScenarios,
-  updateScenarioTelegramSettings,
 } from "@/lib/scenarios/cloudStorage";
 
 interface Props {
-  selectedScenario: ScenarioDefinition | null;
   onLoadScenario: (scenario: ScenarioDefinition) => void;
+
+  // Legacy single-selection interface.
+  selectedId?: string | null;
+  onSelect?: (scenario: ScenarioDefinition) => void;
+
+  // New multi-selection interface.
+  selectedIds?: string[];
+  onToggle?: (scenario: ScenarioDefinition) => void;
 }
 
-function formatDate(value: string) {
+function formatDate(value: string): string {
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "Unknown";
+  if (Number.isNaN(date.getTime())) return value;
 
   return date.toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -38,53 +46,143 @@ function formatDate(value: string) {
   });
 }
 
-function isScenario(value: unknown): value is SavedScenario {
-  if (!value || typeof value !== "object") return false;
+export function formatScenarioFilters(
+  filters: ScenarioFilters
+): string {
+  const parts: string[] = [];
 
-  const item = value as Record<string, unknown>;
+  function range(
+    label: string,
+    min?: number,
+    max?: number
+  ) {
+    if (min !== undefined && max !== undefined) {
+      parts.push(`${label}: ${min}–${max}`);
+    } else if (min !== undefined) {
+      parts.push(`${label}: at least ${min}`);
+    } else if (max !== undefined) {
+      parts.push(`${label}: up to ${max}`);
+    }
+  }
 
-  return (
-    typeof item.id === "string" &&
-    item.id.length > 0 &&
-    typeof item.name === "string" &&
-    item.name.trim().length > 0 &&
-    typeof item.startDate === "string" &&
-    typeof item.endDate === "string" &&
-    typeof item.savedAt === "string" &&
-    typeof item.updatedAt === "string" &&
-    typeof item.filters === "object" &&
-    item.filters !== null &&
-    typeof item.stake === "number" &&
-    Number.isFinite(item.stake) &&
-    item.stake > 0 &&
-    item.stake <= 100000 &&
-    ["win", "each_way"].includes(String(item.betType)) &&
-    ["per_horse", "per_race"].includes(
-      String(item.stakeAllocation)
-    ) &&
-    ["total", "per_leg"].includes(String(item.stakeMode))
+  range("Decimal odds", filters.minOdds, filters.maxOdds);
+  range(
+    "Odds rank",
+    filters.minPreRaceRank,
+    filters.maxPreRaceRank
   );
+  range(
+    "Distance (f)",
+    filters.minDistance,
+    filters.maxDistance
+  );
+
+  if (filters.favouriteStatus === "favourite") {
+    parts.push("Favourites only");
+  } else if (
+    filters.favouriteStatus === "not_favourite"
+  ) {
+    parts.push("Exclude favourites");
+  }
+
+  const collections: {
+    label: string;
+    values?: string[];
+    single?: string;
+  }[] = [
+    {
+      label: "Race type",
+      values: filters.raceTypes,
+      single: filters.raceType,
+    },
+    {
+      label: "Course",
+      values: filters.courses,
+      single: filters.course,
+    },
+    {
+      label: "Class",
+      values: filters.raceClasses,
+      single: filters.raceClass,
+    },
+    {
+      label: "Going",
+      values: filters.goings,
+      single: filters.going,
+    },
+    {
+      label: "Surface",
+      values: filters.surfaces,
+      single: filters.surface,
+    },
+  ];
+
+  for (const collection of collections) {
+    const values = collection.values?.length
+      ? collection.values
+      : collection.single
+        ? [collection.single]
+        : [];
+
+    if (values.length) {
+      parts.push(
+        `${collection.label}: ${values.join(", ")}`
+      );
+    }
+  }
+
+  const booleanLabels: {
+    key: keyof ScenarioFilters;
+    label: string;
+  }[] = [
+    { key: "handicap", label: "Handicap" },
+    { key: "courseWinner", label: "C" },
+    { key: "distanceWinner", label: "D" },
+    { key: "courseDistanceWinner", label: "CD" },
+    { key: "beatenFavourite", label: "BF" },
+    { key: "wonInLast3", label: "Won in last 3" },
+    { key: "win2InLast6", label: "Won twice in last 6" },
+    { key: "eachWayEligible", label: "Each-way eligible" },
+  ];
+
+  for (const { key, label } of booleanLabels) {
+    const value = filters[key];
+
+    if (value === true) parts.push(label);
+    if (value === false) parts.push(`Exclude ${label}`);
+  }
+
+  return parts.length
+    ? parts.join(" · ")
+    : "All horses — no additional filters";
 }
 
 export default function SavedScenarios({
-  selectedScenario,
   onLoadScenario,
+  selectedId = null,
+  onSelect,
+  selectedIds,
+  onToggle,
 }: Props) {
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
-
-  const [savedScenarios, setSavedScenarios] = useState<
-    SavedScenario[]
-  >([]);
-
+  const [savedScenarios, setSavedScenarios] =
+    useState<SavedScenario[]>([]);
   const [localIds, setLocalIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [localSelectedIds, setLocalSelectedIds] =
+    useState<string[]>([]);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeIds =
+    selectedIds ??
+    (onSelect
+      ? selectedId
+        ? [selectedId]
+        : []
+      : localSelectedIds);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (currentUser) => {
@@ -135,6 +233,25 @@ export default function SavedScenarios({
   }, [user]);
 
   useEffect(() => {
+    refreshLocalIds();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const handleScenarioSaved = () => {
+      void refresh(user.uid).catch((err: unknown) => {
+        showError(err, "Unable to refresh saved scenarios.");
+      });
+    };
+
+    window.addEventListener("pacey32:scenario-saved", handleScenarioSaved);
+    return () => {
+      window.removeEventListener("pacey32:scenario-saved", handleScenarioSaved);
+    };
+  }, [user]);
+
+  function refreshLocalIds() {
     try {
       setLocalIds(
         getSavedScenarios().map((scenario) => scenario.id)
@@ -142,7 +259,7 @@ export default function SavedScenarios({
     } catch {
       setLocalIds([]);
     }
-  }, []);
+  }
 
   async function refresh(uid: string) {
     const scenarios = await getCloudScenarios(uid);
@@ -154,32 +271,37 @@ export default function SavedScenarios({
 
   function showError(err: unknown, fallback: string) {
     setMessage(null);
-    setError(err instanceof Error ? err.message : fallback);
+    setError(
+      err instanceof Error ? err.message : fallback
+    );
   }
 
-  async function handleSave() {
-    if (!user || !selectedScenario || busy) return;
-
-    setBusy(true);
+  function toggleScenario(scenario: SavedScenario) {
+    setMessage(null);
     setError(null);
 
-    try {
-      await saveCloudScenario(user.uid, selectedScenario);
-      await refresh(user.uid);
-
-      setMessage(
-        `Saved "${selectedScenario.name}" to your account.`
-      );
-    } catch (err) {
-      showError(err, "Unable to save scenario.");
-    } finally {
-      setBusy(false);
+    if (onToggle) {
+      onToggle(scenario);
+      return;
     }
+
+    if (onSelect) {
+      onSelect(scenario);
+      return;
+    }
+
+    setLocalSelectedIds((previous) =>
+      previous.includes(scenario.id)
+        ? previous.filter((id) => id !== scenario.id)
+        : [...previous, scenario.id]
+    );
   }
 
   function handleLoad(scenario: SavedScenario) {
     onLoadScenario(scenario);
-    setMessage(`Loaded "${scenario.name}".`);
+    setMessage(
+      `Loaded "${scenario.name}" into Scenario Builder.`
+    );
     setError(null);
   }
 
@@ -191,16 +313,17 @@ export default function SavedScenarios({
       scenario.name
     );
 
-    if (name === null) return;
+    if (name === null || !name.trim()) return;
 
     setBusy(true);
     setError(null);
+    setMessage(null);
 
     try {
       await renameCloudScenario(
         user.uid,
         scenario.id,
-        name
+        name.trim()
       );
 
       await refresh(user.uid);
@@ -223,41 +346,19 @@ export default function SavedScenarios({
 
     setBusy(true);
     setError(null);
+    setMessage(null);
 
     try {
       await deleteCloudScenario(user.uid, scenario.id);
       await refresh(user.uid);
 
+      setLocalSelectedIds((previous) =>
+        previous.filter((id) => id !== scenario.id)
+      );
+
       setMessage("Saved scenario deleted.");
     } catch (err) {
       showError(err, "Unable to delete scenario.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleTelegramSettings(
-    scenario: SavedScenario,
-    enabled: boolean,
-    noSelections: boolean
-  ) {
-    if (!user || busy) return;
-
-    setBusy(true);
-    setError(null);
-
-    try {
-      await updateScenarioTelegramSettings(
-        user.uid,
-        scenario.id,
-        enabled,
-        noSelections
-      );
-
-      await refresh(user.uid);
-      setMessage("Telegram preferences updated.");
-    } catch (err) {
-      showError(err, "Unable to update Telegram preferences.");
     } finally {
       setBusy(false);
     }
@@ -276,21 +377,24 @@ export default function SavedScenarios({
       (scenario) => !cloudIds.has(scenario.id)
     );
 
-    if (unmigrated.length === 0) {
-      setMessage("All local scenarios are already in your account.");
+    if (!unmigrated.length) {
+      setMessage(
+        "All browser-saved scenarios are already in your account."
+      );
       return;
     }
 
     const confirmed = window.confirm(
       `Import ${unmigrated.length} browser-saved scenario(s) ` +
-        "into your account? Existing cloud scenarios will be " +
-        "preserved. Local copies will remain."
+        "into your account? Existing cloud scenarios will " +
+        "be preserved. Browser copies will remain."
     );
 
     if (!confirmed) return;
 
     setBusy(true);
     setError(null);
+    setMessage(null);
 
     try {
       const result = await migrateLocalScenarios(
@@ -302,111 +406,68 @@ export default function SavedScenarios({
 
       setMessage(
         `Migrated ${result.imported} scenario(s). ` +
-          `${result.skipped} skipped. Local copies preserved.`
+          `${result.skipped} skipped. Browser copies preserved.`
       );
     } catch (err) {
       showError(err, "Unable to migrate local scenarios.");
     } finally {
+      refreshLocalIds();
       setBusy(false);
     }
   }
 
-  function handleExport() {
+  function handleClearBrowserScenarios() {
+    if (busy) return;
+
+    const cloudIds = new Set(
+      savedScenarios.map((scenario) => scenario.id)
+    );
+
+    let unmigrated: SavedScenario[];
+
     try {
-      const json = JSON.stringify(
-        {
-          format: "pacey32-horseracing-scenarios",
-          version: 1,
-          exportedAt: new Date().toISOString(),
-          scenarios: savedScenarios,
-        },
-        null,
-        2
+      unmigrated = getSavedScenarios().filter(
+        (scenario) => !cloudIds.has(scenario.id)
       );
+    } catch (err) {
+      showError(
+        err,
+        "Unable to read browser-saved scenarios."
+      );
+      return;
+    }
 
-      const blob = new Blob([json], {
-        type: "application/json",
-      });
+    if (!unmigrated.length) {
+      refreshLocalIds();
+      setMessage("No unmigrated browser scenarios to clear.");
+      return;
+    }
 
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
+    const confirmed = window.confirm(
+      `Permanently remove ${unmigrated.length} ` +
+        "unmigrated scenario(s) from this browser?\n\n" +
+        "These scenarios may not exist in your cloud account. " +
+        "This cannot be undone. Cloud scenarios will not be deleted."
+    );
 
-      link.href = url;
-      link.download = "pacey32-saved-scenarios.json";
+    if (!confirmed) return;
 
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+    try {
+      for (const scenario of unmigrated) {
+        deleteSavedScenario(scenario.id);
+      }
 
-      URL.revokeObjectURL(url);
-
-      setMessage("Cloud scenarios exported.");
+      refreshLocalIds();
       setError(null);
-    } catch (err) {
-      showError(err, "Unable to export scenarios.");
-    }
-  }
-
-  async function handleImport(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
-    const file = event.target.files?.[0];
-
-    if (!file || !user || busy) return;
-
-    setBusy(true);
-    setError(null);
-
-    try {
-      const json = await file.text();
-      const parsed: unknown = JSON.parse(json);
-
-      if (!parsed || typeof parsed !== "object") {
-        throw new Error("Invalid scenario file.");
-      }
-
-      const data = parsed as Record<string, unknown>;
-
-      if (
-        data.format !== "pacey32-horseracing-scenarios" ||
-        data.version !== 1 ||
-        !Array.isArray(data.scenarios)
-      ) {
-        throw new Error("Unsupported scenario export format.");
-      }
-
-      const valid = data.scenarios.filter(isScenario);
-      const invalidCount =
-        data.scenarios.length - valid.length;
-
-      const imported = valid.map((scenario) => ({
-        ...scenario,
-        id: crypto.randomUUID(),
-        savedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        telegramEnabled: false,
-        telegramNoSelections: false,
-      }));
-
-      const result = await migrateLocalScenarios(
-        user.uid,
-        imported
-      );
-
-      await refresh(user.uid);
-
       setMessage(
-        `Imported ${result.imported} scenario(s). ` +
-          `${invalidCount + result.skipped} skipped.`
+        `Removed ${unmigrated.length} browser-saved scenario(s).`
       );
     } catch (err) {
-      showError(err, "Unable to import scenarios.");
-    } finally {
-      setBusy(false);
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      refreshLocalIds();
+      showError(
+        err,
+        "Unable to clear browser-saved scenarios."
+      );
     }
   }
 
@@ -419,75 +480,24 @@ export default function SavedScenarios({
   ).length;
 
   return (
-    <section
-      className="mb-7 rounded-xl border bg-white p-6 shadow-sm"
-      style={{
-        borderColor: "var(--racing-border, #ded8c9)",
-      }}
-    >
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+    <section className="rounded-xl border border-[#ded8c9] bg-white p-4 md:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2
-            className="font-serif text-2xl"
-            style={{
-              color: "var(--racing-green-dark, #123d2d)",
-            }}
-          >
-            Saved Scenarios
-          </h2>
+          <h3 className="font-serif text-xl text-[#123d2d]">
+            Your saved scenarios
+          </h3>
 
-          <p className="mt-1 text-sm text-gray-500">
-            Save and reuse scenarios across devices using your account.
+          <p className="mt-1 text-xs text-gray-500">
+            Tick scenarios to compare performance, or load
+            one into the builder to edit it.
           </p>
         </div>
 
-        {user && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={!selectedScenario || busy || loading}
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-              style={{
-                background: "var(--racing-green, #164734)",
-              }}
-            >
-              Save Selected
-            </button>
 
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={
-                savedScenarios.length === 0 || busy || loading
-              }
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-40"
-            >
-              Export JSON
-            </button>
-
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy || loading}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-40"
-            >
-              Import JSON
-            </button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".json,application/json"
-              onChange={(event) => void handleImport(event)}
-              className="hidden"
-            />
-          </div>
-        )}
       </div>
 
       {message && (
-        <p className="mb-4 text-sm text-green-700">
+        <p className="mb-3 text-sm text-green-700">
           {message}
         </p>
       )}
@@ -495,7 +505,7 @@ export default function SavedScenarios({
       {error && (
         <p
           role="alert"
-          className="mb-4 text-sm text-red-700"
+          className="mb-3 text-sm text-red-700"
         >
           {error}
         </p>
@@ -503,146 +513,163 @@ export default function SavedScenarios({
 
       {checkingAuth ? (
         <p className="text-sm text-gray-500">
-          Checking account...
+          Checking account…
         </p>
       ) : !user ? (
-        <div className="rounded-lg bg-gray-50 p-5 text-sm text-gray-600">
-          You can run and compare scenarios without signing in.
-          To save scenarios across devices,{" "}
+        <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
+          Sign in to save and access your scenarios across
+          devices.{" "}
           <Link
             href="/account"
             className="font-semibold text-green-800 underline"
           >
-            sign in to your account
+            Go to your account
           </Link>
           .
         </div>
       ) : (
         <>
           {!loading && unmigratedCount > 0 && (
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
               <p className="text-sm text-gray-600">
                 {unmigratedCount} browser-saved scenario(s)
-                not yet in your account. You can copy them
-                without deleting the originals.
+                not yet in your account.
               </p>
 
-              <button
-                type="button"
-                onClick={() => void handleMigration()}
-                disabled={busy || loading}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium disabled:opacity-40"
-              >
-                Migrate Local Scenarios
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleMigration()}
+                  disabled={busy}
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+                >
+                  Migrate to Account
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleClearBrowserScenarios}
+                  disabled={busy}
+                  className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-40"
+                >
+                  Clear Browser Copies
+                </button>
+              </div>
             </div>
           )}
 
           {loading ? (
             <p className="text-sm text-gray-500">
-              Loading cloud scenarios...
+              Loading cloud scenarios…
             </p>
           ) : savedScenarios.length === 0 ? (
-            <p className="rounded-lg bg-gray-50 px-4 py-6 text-sm text-gray-500">
-              No cloud scenarios saved yet. Run a scenario and
-              select &quot;Save Selected&quot; to store it in your account.
+            <p className="rounded-lg bg-gray-50 px-4 py-5 text-sm text-gray-500">
+              No saved scenarios yet. Run a scenario in the
+              builder, then click Save Scenario.
             </p>
           ) : (
-            <div className="space-y-3">
-              {savedScenarios.map((scenario) => (
-                <div
-                  key={scenario.id}
-                  className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 p-4"
-                >
-                  <div>
-                    <div className="font-semibold">
-                      {scenario.name}
-                    </div>
+            <div className="divide-y divide-[#e8e2d6] overflow-hidden rounded-lg border border-[#ded8c9]">
+              {savedScenarios.map((scenario) => {
+                const selected = activeIds.includes(
+                  scenario.id
+                );
 
-                    <div className="mt-1 text-sm text-gray-500">
-                      {scenario.startDate} to {scenario.endDate}
-                      {" · "}
-                      Saved {formatDate(scenario.savedAt)}
-                    </div>
-
-                    {/* Telegram preferences */}
-                    <div className="mt-3 space-y-2">
-                      <label className="flex items-center gap-2 text-sm text-gray-500">
+                return (
+                  <div
+                    key={scenario.id}
+                    className={`px-3 py-3 ${
+                      selected
+                        ? "bg-[#edf4ed]"
+                        : "bg-white"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
                         <input
                           type="checkbox"
-                          checked={
-                            scenario.telegramEnabled ?? false
-                          }
-                          disabled
+                          checked={selected}
                           onChange={() =>
-                            void handleTelegramSettings(
-                              scenario,
-                              !scenario.telegramEnabled,
-                              scenario.telegramNoSelections ?? false
-                            )
+                            toggleScenario(scenario)
                           }
+                          className="mt-1 accent-[#123d2d]"
+                          aria-label={`Compare ${scenario.name}`}
                         />
-                        Daily Telegram alerts
+
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-[#123d2d]">
+                            {scenario.name}
+                          </span>
+
+                          <span className="mt-0.5 block text-xs text-gray-500">
+                            {scenario.startDate} to{" "}
+                            {scenario.endDate}
+                            {" · "}
+                            Saved {formatDate(scenario.savedAt)}
+                            {" · "}
+                            £{scenario.stake.toFixed(2)}
+                            {" · "}
+                            {scenario.betType === "each_way"
+                              ? "Each-way"
+                              : "Win"}
+                          </span>
+
+                          <span className="mt-1 block text-xs leading-relaxed text-gray-600">
+                            {formatScenarioFilters(
+                              scenario.filters
+                            )}
+                          </span>
+
+                          <span className="mt-1 block text-xs text-gray-500">
+                            {scenario.stakeAllocation ===
+                            "per_race"
+                              ? "Stake shared per race"
+                              : "Stake per horse"}
+                            {" · "}
+                            {scenario.stakeMode === "per_leg"
+                              ? "Stake per leg"
+                              : "Total stake"}
+                          </span>
+                        </span>
                       </label>
 
-                      <label className="flex items-center gap-2 text-sm text-gray-500">
-                        <input
-                          type="checkbox"
-                          checked={
-                            scenario.telegramNoSelections ?? false
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleLoad(scenario)
                           }
-                          disabled
-                          onChange={() =>
-                            void handleTelegramSettings(
-                              scenario,
-                              scenario.telegramEnabled ?? false,
-                              !scenario.telegramNoSelections
-                            )
-                          }
-                        />
-                        Notify when no horses qualify
-                      </label>
+                          disabled={busy}
+                          className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs disabled:opacity-40"
+                        >
+                          Edit in Builder
+                        </button>
 
-                      <p className="text-xs text-gray-500">
-                        Telegram account linking will be available soon.
-                      </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleRename(scenario)
+                          }
+                          disabled={busy}
+                          className="rounded-md border border-gray-300 px-2.5 py-1.5 text-xs disabled:opacity-40"
+                        >
+                          Rename
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleDelete(scenario)
+                          }
+                          disabled={busy}
+                          className="rounded-md border border-red-200 px-2.5 py-1.5 text-xs text-red-700 disabled:opacity-40"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleLoad(scenario)}
-                      disabled={busy}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-40"
-                    >
-                      Load
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleRename(scenario)
-                      }
-                      disabled={busy}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-40"
-                    >
-                      Rename
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleDelete(scenario)
-                      }
-                      disabled={busy}
-                      className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700 disabled:opacity-40"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

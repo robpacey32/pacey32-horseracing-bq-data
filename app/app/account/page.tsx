@@ -17,6 +17,7 @@ import {
   type User,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import NotificationPreferences from "@/components/account/NotificationPreferences";
 
 type AuthMode = "signin" | "register" | "reset";
 
@@ -549,6 +550,7 @@ export default function AccountPage() {
             </button>
           </section>
 
+          <NotificationPreferences user={user} />
           <div className="mt-6 grid gap-5 md:grid-cols-2">
             <section className="rounded-xl border bg-white p-6">
               <h2 className="text-xl font-semibold">My Scenarios</h2>
