@@ -1,4 +1,8 @@
 export interface ScenarioFilters {
+  horseNames?: string[];
+  jockeyNames?: string[];
+  trainerNames?: string[];
+  horseNameContains?: string;
   minOdds?: number; maxOdds?: number;
   minPreRaceRank?: number; maxPreRaceRank?: number;
   favouriteStatus?: "favourite" | "not_favourite";

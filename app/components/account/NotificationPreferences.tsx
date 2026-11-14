@@ -521,7 +521,12 @@ export default function NotificationPreferences({
 
             {/* User's saved scenarios */}
 
-            {scenarios.map((scenario) => {
+            {[...scenarios].sort((a, b) =>
+              a.name.localeCompare(b.name, "en-GB", {
+                numeric: true,
+                sensitivity: "base",
+              }) || a.id.localeCompare(b.id)
+            ).map((scenario) => {
               const enabled =
                 scenario.notificationsEnabled === true;
 

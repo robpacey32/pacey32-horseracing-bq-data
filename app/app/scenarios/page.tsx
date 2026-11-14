@@ -8,6 +8,7 @@ import { auth } from "@/lib/firebase";
 import { saveCloudScenario } from "@/lib/scenarios/cloudStorage";
 
 import ScenarioSelections from "@/components/scenarios/ScenarioSelections";
+import NameMultiSelect from "@/components/scenarios/NameMultiSelect";
 import SavedScenarios, {
   formatScenarioFilters,
 } from "@/components/scenarios/SavedScenarios";
@@ -521,10 +522,18 @@ export default function ScenariosPage() {
     "any" | "favourite" | "not_favourite"
   >("any");
 
+  // Horse, jockey and trainer filters
+
+  const [horseNames, setHorseNames] = useState<string[]>([]);
+  const [jockeyNames, setJockeyNames] = useState<string[]>([]);
+  const [trainerNames, setTrainerNames] = useState<string[]>([]);
+  const [horseNameContains, setHorseNameContains] = useState("");
+
   // Race filters
 
   const [raceTypes, setRaceTypes] = useState<string[]>([
     "Flat",
+    "Jumps",
   ]);
 
   const [courses, setCourses] = useState<string[]>([]);
@@ -661,12 +670,16 @@ export default function ScenariosPage() {
   }
 
   function resetBuilderFilters() {
+    setHorseNames([]);
+    setJockeyNames([]);
+    setTrainerNames([]);
+    setHorseNameContains("");
     setMinOdds("2");
     setMaxOdds("10");
     setMinPreRaceRank("");
     setMaxPreRaceRank("3");
     setFavouriteStatus("any");
-    setRaceTypes(["Flat"]);
+    setRaceTypes(["Flat", "Jumps"]);
     setCourses([]);
     setRaceClasses([]);
     setGoings([]);
@@ -685,6 +698,13 @@ export default function ScenariosPage() {
 
   function builderFilters(): ScenarioFilters {
     const filters: ScenarioFilters = {};
+
+    if (horseNames.length) filters.horseNames = horseNames;
+    if (jockeyNames.length) filters.jockeyNames = jockeyNames;
+    if (trainerNames.length) filters.trainerNames = trainerNames;
+    if (horseNameContains.trim()) {
+      filters.horseNameContains = horseNameContains.trim();
+    }
 
     const numbers = {
       minOdds: optionalNumber(minOdds),
@@ -1033,6 +1053,11 @@ export default function ScenariosPage() {
   ) {
     const filters = definition.filters;
 
+    setHorseNames(filters.horseNames ?? []);
+    setJockeyNames(filters.jockeyNames ?? []);
+    setTrainerNames(filters.trainerNames ?? []);
+    setHorseNameContains(filters.horseNameContains ?? "");
+
     // Preserve the ID for subsequent saves.
     setEditingScenarioId(definition.id);
     setBuilderOpen(true);
@@ -1320,6 +1345,103 @@ export default function ScenariosPage() {
 
           {builderOpen && (
             <div className="mt-3 space-y-3">
+              {/* Builder actions */}
+
+              <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
+                <button
+                  type="button"
+                  onClick={startNewScenario}
+                  disabled={savingScenario}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50"
+                >
+                  New Scenario
+                </button>
+
+                <button
+                  type="button"
+                  onClick={resetBuilderFilters}
+                  disabled={savingScenario}
+                  className="rounded-md border border-[#123d2d] bg-white px-4 py-2 text-xs font-semibold text-[#123d2d] hover:bg-[#f8f7f2] disabled:opacity-50"
+                >
+                  Reset Filters
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void handleSaveScenario()
+                  }
+                  disabled={
+                    savingScenario ||
+                    !currentUser ||
+                    !scenarioName.trim() ||
+                    !startDate ||
+                    !endDate ||
+                    startDate > endDate ||
+                    !Number.isFinite(stake) ||
+                    stake <= 0
+                  }
+                  className="rounded-md bg-[#123d2d] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  {savingScenario
+                    ? "Saving…"
+                    : "Save Scenario"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void runBuilder()
+                  }
+                  disabled={
+                    loading ||
+                    !startDate ||
+                    !endDate ||
+                    startDate > endDate ||
+                    stake <= 0
+                  }
+                  className="rounded-md bg-[#003b2b] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  {loading
+                    ? "Calculating…"
+                    : "Run Builder Backtest"}
+                </button>
+              </div>
+
+              {editingScenarioId && (
+                <p className="text-xs text-gray-500">
+                  Editing an existing saved scenario.
+                  Save Scenario will update it.
+                  Select New Scenario to create
+                  a separate scenario.
+                </p>
+              )}
+
+              {saveMessage && (
+                <p
+                  role="status"
+                  className="text-sm text-green-700"
+                >
+                  {saveMessage}
+                </p>
+              )}
+
+              {saveError && (
+                <p
+                  role="alert"
+                  className="text-sm text-red-700"
+                >
+                  {saveError}
+                </p>
+              )}
+
+              {!currentUser && (
+                <p className="text-xs text-gray-500">
+                  Sign in to save scenarios
+                  to your account.
+                </p>
+              )}
+
               {/* Scenario settings */}
 
               <div className="grid grid-cols-2 items-end gap-2 md:grid-cols-12">
@@ -1531,6 +1653,53 @@ export default function ScenariosPage() {
                 </div>
               </div>
 
+              {/* Horse, jockey and trainer */}
+
+              <div className="border-t border-gray-200 pt-2">
+                <h3 className="mb-2 text-sm font-semibold text-[#123d2d]">
+                  Horse, jockey and trainer
+                </h3>
+                <p className="mb-2 text-xs text-gray-500">
+                  Choose any matching name within a dropdown. Different filters
+                  combine, and also apply alongside the odds and race filters.
+                </p>
+
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <NameMultiSelect
+                    title="Horses"
+                    kind="horse"
+                    selected={horseNames}
+                    onChange={setHorseNames}
+                  />
+                  <NameMultiSelect
+                    title="Jockeys"
+                    kind="jockey"
+                    selected={jockeyNames}
+                    onChange={setJockeyNames}
+                  />
+                  <NameMultiSelect
+                    title="Trainers"
+                    kind="trainer"
+                    selected={trainerNames}
+                    onChange={setTrainerNames}
+                  />
+                  <Field
+                    label="Horse name contains"
+                    help="Match this text anywhere in a horse's name, ignoring capitalisation. Leave blank for any name."
+                  >
+                    <input
+                      type="text"
+                      aria-label="Horse name contains"
+                      maxLength={100}
+                      value={horseNameContains}
+                      onChange={(event) => setHorseNameContains(event.target.value)}
+                      placeholder="For example: bob"
+                      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                  </Field>
+                </div>
+              </div>
+
               {/* Race details */}
 
               <div className="border-t border-gray-200 pt-2">
@@ -1719,102 +1888,6 @@ export default function ScenariosPage() {
                 </div>
               </div>
 
-              {/* Builder actions */}
-
-              <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 pt-2">
-                <button
-                  type="button"
-                  onClick={startNewScenario}
-                  disabled={savingScenario}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50"
-                >
-                  New Scenario
-                </button>
-
-                <button
-                  type="button"
-                  onClick={resetBuilderFilters}
-                  disabled={savingScenario}
-                  className="rounded-md border border-[#123d2d] bg-white px-4 py-2 text-xs font-semibold text-[#123d2d] hover:bg-[#f8f7f2] disabled:opacity-50"
-                >
-                  Reset Filters
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    void handleSaveScenario()
-                  }
-                  disabled={
-                    savingScenario ||
-                    !currentUser ||
-                    !scenarioName.trim() ||
-                    !startDate ||
-                    !endDate ||
-                    startDate > endDate ||
-                    !Number.isFinite(stake) ||
-                    stake <= 0
-                  }
-                  className="rounded-md bg-[#123d2d] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {savingScenario
-                    ? "Saving…"
-                    : "Save Scenario"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    void runBuilder()
-                  }
-                  disabled={
-                    loading ||
-                    !startDate ||
-                    !endDate ||
-                    startDate > endDate ||
-                    stake <= 0
-                  }
-                  className="rounded-md bg-[#003b2b] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  {loading
-                    ? "Calculating…"
-                    : "Run Builder Backtest"}
-                </button>
-              </div>
-
-              {editingScenarioId && (
-                <p className="text-xs text-gray-500">
-                  Editing an existing saved scenario.
-                  Save Scenario will update it.
-                  Select New Scenario to create
-                  a separate scenario.
-                </p>
-              )}
-
-              {saveMessage && (
-                <p
-                  role="status"
-                  className="text-sm text-green-700"
-                >
-                  {saveMessage}
-                </p>
-              )}
-
-              {saveError && (
-                <p
-                  role="alert"
-                  className="text-sm text-red-700"
-                >
-                  {saveError}
-                </p>
-              )}
-
-              {!currentUser && (
-                <p className="text-xs text-gray-500">
-                  Sign in to save scenarios
-                  to your account.
-                </p>
-              )}
             </div>
           )}
         </section>

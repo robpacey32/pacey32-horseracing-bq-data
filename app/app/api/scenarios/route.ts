@@ -10,6 +10,7 @@ const ID_PATTERN = /^[a-zA-Z0-9_-]{1,100}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const FILTER_KEYS = [
+  "horseNames", "jockeyNames", "trainerNames", "horseNameContains",
   "minOdds", "maxOdds",
   "minPreRaceRank", "maxPreRaceRank",
   "favouriteStatus",
@@ -38,6 +39,10 @@ const BOOLEAN_FILTERS = new Set<string>([
   "courseDistanceWinner", "beatenFavourite",
   "wonInLast3", "win2InLast6",
   "eachWayEligible",
+]);
+
+const NAME_FILTERS = new Set<string>([
+  "horseNames", "jockeyNames", "trainerNames",
 ]);
 
 const STRING_FILTERS = new Set<string>([
@@ -93,6 +98,20 @@ function isValidFilters(
       }
     } else if (BOOLEAN_FILTERS.has(key)) {
       if (typeof filterValue !== "boolean") return false;
+    } else if (key === "horseNameContains") {
+      if (typeof filterValue !== "string" || filterValue.length > 100) {
+        return false;
+      }
+    } else if (NAME_FILTERS.has(key)) {
+      if (
+        !Array.isArray(filterValue) ||
+        filterValue.length > 250 ||
+        filterValue.some(
+          (item) => typeof item !== "string" || !item.trim() || item.length > 100
+        )
+      ) {
+        return false;
+      }
     } else if (STRING_FILTERS.has(key)) {
       if (typeof filterValue !== "string") return false;
     } else if (ARRAY_FILTERS.has(key)) {

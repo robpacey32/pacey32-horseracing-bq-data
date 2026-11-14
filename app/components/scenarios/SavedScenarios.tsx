@@ -90,6 +90,9 @@ export function formatScenarioFilters(
     values?: string[];
     single?: string;
   }[] = [
+    { label: "Horse", values: filters.horseNames },
+    { label: "Jockey", values: filters.jockeyNames },
+    { label: "Trainer", values: filters.trainerNames },
     {
       label: "Race type",
       values: filters.raceTypes,
@@ -129,6 +132,10 @@ export function formatScenarioFilters(
         `${collection.label}: ${values.join(", ")}`
       );
     }
+  }
+
+  if (filters.horseNameContains?.trim()) {
+    parts.push(`Horse name contains: "${filters.horseNameContains.trim()}"`);
   }
 
   const booleanLabels: {

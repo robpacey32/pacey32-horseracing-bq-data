@@ -49,3 +49,13 @@ jobs:
           gh workflow run 4_telegram_alerts.yml \
             --ref main \
             -f alert_type=${{ github.event.inputs.scrape_type }}
+
+      - name: Trigger personalised evening results
+        if: ${{ success() && github.event.inputs.scrape_type == 'evening' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run 6_Daily_ScenarioAlerts.yml \
+            --ref main \
+            -f alert_type=evening \
+            -f mode=send
